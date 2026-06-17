@@ -40,6 +40,8 @@ cp .env.example .env
 # 编辑 .env，填入你的 API Key
 ```
 
+> 提示：Astron MCP 启动时会自动加载当前工作目录下的 `.env` 文件（不覆盖已有的环境变量），所以本地使用时不必手动 `source`。
+
 Coding Plan 用户最少只需要：
 
 ```env

@@ -3,22 +3,31 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import uuid
 from pathlib import Path
 from typing import Annotated, Any, Dict, List
 
+from dotenv import load_dotenv
 from mcp.server.fastmcp import FastMCP
 from pydantic import Field
+
+# Load .env if present before reading configuration. Do not override existing env vars.
+load_dotenv(override=False)
 
 from astronmcp.config import Settings, load_settings, validate_settings
 from astronmcp.spark_client import SparkApiError, SparkClient, create_client
 
+# Silence noisy HTTP/WebSocket libraries so they don't pollute MCP stdio.
+logging.getLogger("httpx").setLevel(logging.WARNING)
+logging.getLogger("httpcore").setLevel(logging.WARNING)
+logging.getLogger("websockets").setLevel(logging.WARNING)
+
 mcp = FastMCP("Astron Spark MCP Server")
 
 DEFAULT_SYSTEM_PROMPT = (
-    "你是一名经验丰富的软件工程师和架构师。"
-    "请对用户提供的内容进行严谨、客观、可落地的分析与审查，"
-    "优先指出潜在风险、缺陷和改进方向，并给出具体建议。"
+    "你是一个专业、简洁的 AI 编程助手。请根据用户的问题给出清晰、准确的回答，"
+    "必要时提供可运行的代码示例。保持回答重点突出，避免过度冗长。"
 )
 
 CODE_REVIEW_SYSTEM_PROMPT = (

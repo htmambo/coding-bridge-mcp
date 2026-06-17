@@ -65,7 +65,7 @@ def load_settings() -> Settings:
         api_url=api_url,
         api_password=api_password,
         app_id=_env("SPARK_APP_ID", ""),
-        api_key=_env("SPARK_API_KEY", ""),
+        api_key=_env(["SPARK_API_KEY", "API_KEY"], ""),
         api_secret=_env("SPARK_API_SECRET", ""),
         default_model=default_model,
         timeout_seconds=timeout_seconds,

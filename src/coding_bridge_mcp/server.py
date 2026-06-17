@@ -195,9 +195,9 @@ async def _execute(
 
 
 @mcp.tool(
-    name="spark",
+    name="chat",
     description=(
-        "与讯飞星火大模型（或 Coding Plan）进行通用多轮对话，"
+        "与 Coding Plan 服务进行通用多轮对话，"
         "可用于代码审查、计划审查、问题分析等。\n"
         "必选参数：PROMPT（任务指令）、cd（工作目录）。\n"
         "可选参数：SESSION_ID（继续会话）、model（模型版本）、"
@@ -205,26 +205,26 @@ async def _execute(
     ),
     meta={"version": "0.1.0"},
 )
-async def spark(
-    PROMPT: Annotated[str, "Instruction for the task to send to Spark."],
-    cd: Annotated[Path, "Working directory for the Spark session."],
+async def chat(
+    PROMPT: Annotated[str, "Instruction for the task to send to the model."],
+    cd: Annotated[Path, "Working directory for the chat session."],
     SESSION_ID: Annotated[
         str,
         Field(
             default="",
-            description="Resume the specified Spark session. Empty string starts a new session.",
+            description="Resume the specified chat session. Empty string starts a new session.",
         ),
     ] = "",
     model: Annotated[
         str,
-        Field(default="", description="Model version. Empty uses SPARK_DEFAULT_MODEL env."),
+        Field(default="", description="Model version. Empty uses provider default model env."),
     ] = "",
     return_all_messages: Annotated[
         bool,
         Field(default=False, description="Return the full message history for debugging."),
     ] = False,
 ) -> Dict[str, Any]:
-    """Execute a generic Spark prompt and return the result."""
+    """Execute a generic chat prompt and return the result."""
     ok, err = _validate_cd(cd)
     if not ok:
         return {"success": False, "error": err}
@@ -244,7 +244,7 @@ async def spark(
 
 
 @mcp.tool(
-    name="spark_review_code",
+    name="review_code",
     description=(
         "对给定代码进行审查，输出风险、Bug、可读性、安全性与改进建议。\n"
         "必选参数：CODE（代码文本）、cd（工作目录）。\n"
@@ -252,7 +252,7 @@ async def spark(
     ),
     meta={"version": "0.1.0"},
 )
-async def spark_review_code(
+async def review_code(
     CODE: Annotated[str, "Source code to review."],
     cd: Annotated[Path, "Working directory for the review session."],
     REQUIREMENTS: Annotated[
@@ -265,11 +265,11 @@ async def spark_review_code(
     ] = "",
     model: Annotated[
         str,
-        Field(default="", description="Model version. Empty uses SPARK_DEFAULT_MODEL env."),
+        Field(default="", description="Model version. Empty uses provider default model env."),
     ] = "",
     return_all_messages: Annotated[bool, Field(default=False)] = False,
 ) -> Dict[str, Any]:
-    """Review source code with Spark."""
+    """Review source code with the configured provider."""
     ok, err = _validate_cd(cd)
     if not ok:
         return {"success": False, "error": err}
@@ -292,7 +292,7 @@ async def spark_review_code(
 
 
 @mcp.tool(
-    name="spark_review_plan",
+    name="review_plan",
     description=(
         "对项目计划/实施方案进行审查，评估需求、技术选型、风险与可执行性。\n"
         "必选参数：PLAN（计划文本）、cd（工作目录）。\n"
@@ -300,7 +300,7 @@ async def spark_review_code(
     ),
     meta={"version": "0.1.0"},
 )
-async def spark_review_plan(
+async def review_plan(
     PLAN: Annotated[str, "Plan or proposal text to review."],
     cd: Annotated[Path, "Working directory for the review session."],
     CONTEXT: Annotated[
@@ -313,11 +313,11 @@ async def spark_review_plan(
     ] = "",
     model: Annotated[
         str,
-        Field(default="", description="Model version. Empty uses SPARK_DEFAULT_MODEL env."),
+        Field(default="", description="Model version. Empty uses provider default model env."),
     ] = "",
     return_all_messages: Annotated[bool, Field(default=False)] = False,
 ) -> Dict[str, Any]:
-    """Review a project plan with Spark."""
+    """Review a project plan with the configured provider."""
     ok, err = _validate_cd(cd)
     if not ok:
         return {"success": False, "error": err}

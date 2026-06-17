@@ -29,7 +29,7 @@ XFYUN_CODING = ProviderProfile(
     default_model="astron-code-latest",
     default_max_context_chars=96_000,
     default_max_tokens=8_192,
-    api_key_env_vars=["SPARK_API_PASSWORD", "SPARK_API_KEY"],
+    api_key_env_vars=["API_KEY", "SPARK_API_PASSWORD", "SPARK_API_KEY"],
     api_url_env_vars=["SPARK_API_URL"],
     model_env_vars=["SPARK_DEFAULT_MODEL"],
 )
@@ -41,7 +41,7 @@ XFYUN_HTTP = ProviderProfile(
     default_model="4.0Ultra",
     default_max_context_chars=24_000,
     default_max_tokens=4_096,
-    api_key_env_vars=["SPARK_API_PASSWORD", "SPARK_API_KEY"],
+    api_key_env_vars=["API_KEY", "SPARK_API_PASSWORD", "SPARK_API_KEY"],
     api_url_env_vars=["SPARK_API_URL"],
     model_env_vars=["SPARK_DEFAULT_MODEL"],
 )
@@ -66,7 +66,7 @@ VOLCENGINE_CODING = ProviderProfile(
     default_model="ark-code-latest",
     default_max_context_chars=128_000,
     default_max_tokens=8_192,
-    api_key_env_vars=["VOLCENGINE_API_KEY", "ARK_API_KEY"],
+    api_key_env_vars=["API_KEY", "VOLCENGINE_API_KEY", "ARK_API_KEY"],
     api_url_env_vars=["VOLCENGINE_API_URL", "ARK_API_URL"],
     model_env_vars=["VOLCENGINE_MODEL", "ARK_MODEL", "SPARK_DEFAULT_MODEL"],
 )

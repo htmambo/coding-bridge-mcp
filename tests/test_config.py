@@ -15,6 +15,7 @@ def clean_env(monkeypatch):
     for key in [
         "PROVIDER",
         "SPARK_MODE",
+        "API_KEY",
         "SPARK_API_PASSWORD",
         "SPARK_API_KEY",
         "SPARK_APP_ID",
@@ -100,6 +101,38 @@ def test_volcengine_defaults():
     assert "ark.cn-beijing.volces.com" in settings.api_url
     assert settings.default_model == "ark-code-latest"
     assert settings.api_password == "volc-key"
+
+
+def test_coding_uses_generic_api_key():
+    os.environ["PROVIDER"] = "xfyun-coding"
+    os.environ["API_KEY"] = "generic-key"
+    reload(config_module)
+    settings = config_module.load_settings()
+    config_module.validate_settings(settings)
+
+    assert settings.api_password == "generic-key"
+
+
+def test_volcengine_uses_generic_api_key():
+    os.environ["PROVIDER"] = "volcengine-coding"
+    os.environ["API_KEY"] = "generic-key"
+    reload(config_module)
+    settings = config_module.load_settings()
+    config_module.validate_settings(settings)
+
+    assert settings.api_password == "generic-key"
+
+
+def test_websocket_uses_generic_api_key():
+    os.environ["SPARK_MODE"] = "websocket"
+    os.environ["SPARK_APP_ID"] = "appid"
+    os.environ["API_KEY"] = "generic-key"
+    os.environ["SPARK_API_SECRET"] = "secret"
+    reload(config_module)
+    settings = config_module.load_settings()
+    config_module.validate_settings(settings)
+
+    assert settings.api_key == "generic-key"
 
 
 def test_coding_missing_key():

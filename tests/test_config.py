@@ -5,8 +5,8 @@ from importlib import reload
 
 import pytest
 
-from astronmcp import config as config_module
-from astronmcp import spark_client as spark_client_module
+from coding_bridge_mcp import config as config_module
+from coding_bridge_mcp import spark_client as spark_client_module
 
 
 @pytest.fixture(autouse=True)

@@ -15,15 +15,15 @@ from pydantic import Field
 # Load .env if present before reading configuration. Do not override existing env vars.
 load_dotenv(override=False)
 
-from astronmcp.config import Settings, load_settings, validate_settings
-from astronmcp.spark_client import SparkApiError, SparkClient, create_client
+from coding_bridge_mcp.config import Settings, load_settings, validate_settings
+from coding_bridge_mcp.spark_client import SparkApiError, SparkClient, create_client
 
 # Silence noisy HTTP/WebSocket libraries so they don't pollute MCP stdio.
 logging.getLogger("httpx").setLevel(logging.WARNING)
 logging.getLogger("httpcore").setLevel(logging.WARNING)
 logging.getLogger("websockets").setLevel(logging.WARNING)
 
-mcp = FastMCP("Astron Spark MCP Server")
+mcp = FastMCP("Coding Bridge MCP Server")
 
 DEFAULT_SYSTEM_PROMPT = (
     "你是一个专业、简洁的 AI 编程助手。请根据用户的问题给出清晰、准确的回答，"

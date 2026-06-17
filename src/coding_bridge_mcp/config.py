@@ -1,11 +1,11 @@
-"""Configuration and provider detection for Astron MCP."""
+"""Configuration and provider detection for Coding Bridge MCP."""
 
 from __future__ import annotations
 
 import os
 from dataclasses import dataclass
 
-from astronmcp.providers import ProviderProfile, get_provider, resolve_provider_name
+from coding_bridge_mcp.providers import ProviderProfile, get_provider, resolve_provider_name
 
 
 @dataclass(frozen=True)

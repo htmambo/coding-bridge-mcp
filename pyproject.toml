@@ -3,9 +3,9 @@ requires = ["hatchling>=1.25"]
 build-backend = "hatchling.build"
 
 [project]
-name = "astronmcp"
+name = "coding-bridge-mcp"
 version = "0.1.0"
-description = "MCP server wrapping iFlytek Spark API for code/plan review."
+description = "Multi-provider Coding Plan MCP server for code/plan review."
 readme = "README.md"
 requires-python = ">=3.12,<3.14"
 dependencies = [
@@ -16,10 +16,10 @@ dependencies = [
     "pydantic>=2.0",
 ]
 authors = [
-    { name = "astronmcp" },
+    { name = "coding-bridge-mcp" },
 ]
 license = { text = "MIT" }
-keywords = ["mcp", "iflytek", "spark", "code-review", "plan-review"]
+keywords = ["mcp", "coding-plan", "iflytek", "volcengine", "spark", "code-review", "plan-review"]
 classifiers = [
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.12",
@@ -29,13 +29,13 @@ classifiers = [
 ]
 
 [project.scripts]
-astronmcp = "astronmcp.cli:main"
+coding-bridge-mcp = "coding_bridge_mcp.cli:main"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/astronmcp"]
+packages = ["src/coding_bridge_mcp"]
 
 [tool.hatch.build.targets.sdist]
-include = ["src/astronmcp", "README.md", "LICENSE"]
+include = ["src/coding_bridge_mcp", "README.md", "LICENSE"]
 
 [dependency-groups]
 dev = [

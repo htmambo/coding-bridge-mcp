@@ -15,7 +15,7 @@ from urllib.parse import urlencode, urlparse
 
 import httpx
 
-from astronmcp.config import Settings
+from coding_bridge_mcp.config import Settings
 
 
 class SparkApiError(Exception):
@@ -181,7 +181,7 @@ class WebSocketSparkClient(SparkClient):
         # WebSocket protocol uses 0..1 temperature range and different defaults.
         ws_temperature = max(0.01, min(1.0, temperature))
         return {
-            "header": {"app_id": self.settings.app_id, "uid": "astronmcp"},
+            "header": {"app_id": self.settings.app_id, "uid": "coding_bridge_mcp"},
             "parameter": {
                 "chat": {
                     "domain": model,

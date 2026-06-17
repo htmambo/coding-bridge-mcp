@@ -5,7 +5,7 @@ from importlib import reload
 
 import pytest
 
-from astronmcp import server as server_module
+from coding_bridge_mcp import server as server_module
 
 
 @pytest.fixture

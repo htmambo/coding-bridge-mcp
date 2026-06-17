@@ -29,7 +29,7 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
 ### 2. 克隆并进入项目
 
 ```bash
-git clone <your-repo-url> astronmcp
+git clone https://github.com/htmambo/astronmcp.git
 cd astronmcp
 ```
 
@@ -55,9 +55,19 @@ uv sync
 
 ### 5. 接入 Claude Code
 
+**方式 A：本地开发（推荐，方便改配置和二次开发）**
+
 ```bash
 claude mcp add astron -s user --transport stdio -- uv run --python 3.12 astronmcp
 ```
+
+**方式 B：直接从 GitHub 安装（无需克隆）**
+
+```bash
+claude mcp add astron -s user --transport stdio -- uvx --from git+https://github.com/htmambo/astronmcp.git astronmcp
+```
+
+> 注意：方式 B 需要你已经在 Claude Code 启动环境中设置了 `SPARK_API_PASSWORD` 等环境变量。
 
 验证：
 
@@ -65,7 +75,7 @@ claude mcp add astron -s user --transport stdio -- uv run --python 3.12 astronmc
 claude mcp list
 ```
 
-应看到 `astron: uv run --python 3.12 astronmcp - ✓ Connected`。
+应看到 `astron: uv run --python 3.12 astronmcp - ✓ Connected` 或 `astron: uvx --from git+https://github.com/htmambo/astronmcp.git astronmcp - ✓ Connected`。
 
 ---
 

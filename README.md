@@ -12,10 +12,10 @@ Coding Bridge MCP 通过统一的 OpenAI 兼容 HTTP 客户端接入多个厂商
 
 | Provider | 协议 | 凭证 | 默认端点 | 默认模型 |
 |----------|------|------|----------|----------|
-| **xfyun-coding**（默认） | OpenAI 兼容 | `SPARK_API_PASSWORD` | `https://maas-coding-api.cn-huabei-1.xf-yun.com/v2/chat/completions` | `astron-code-latest` |
-| **xfyun-http** | OpenAI 兼容 | `SPARK_API_PASSWORD` | `https://spark-api-open.xf-yun.com/v1/chat/completions` | `4.0Ultra` |
-| **xfyun-websocket** | 原生 WebSocket | `SPARK_APP_ID` + `SPARK_API_KEY` + `SPARK_API_SECRET` | `wss://spark-api.xf-yun.com/v4.0/chat` | `4.0Ultra` |
-| **volcengine-coding** | OpenAI 兼容 | `VOLCENGINE_API_KEY` | `https://ark.cn-beijing.volces.com/api/coding/v3/chat/completions` | `ark-code-latest` |
+| **xfyun-coding**（默认） | OpenAI 兼容 | `API_KEY`（HTTP Bearer） | `https://maas-coding-api.cn-huabei-1.xf-yun.com/v2/chat/completions` | `astron-code-latest` |
+| **xfyun-http** | OpenAI 兼容 | `API_KEY`（HTTP Bearer） | `https://spark-api-open.xf-yun.com/v1/chat/completions` | `4.0Ultra` |
+| **xfyun-websocket** | 原生 WebSocket | `APP_ID` + `API_KEY`（签名）+ `API_SECRET` | `wss://spark-api.xf-yun.com/v4.0/chat` | `4.0Ultra` |
+| **volcengine-coding** | OpenAI 兼容 | `API_KEY`（HTTP Bearer） | `https://ark.cn-beijing.volces.com/api/coding/v3/chat/completions` | `ark-code-latest` |
 
 > **注意**：Coding Plan 类套餐（讯飞、火山）的 API Key **仅限在 AI 编程工具交互场景中使用**，禁止用于自动化脚本、批量任务或自建后端。
 
@@ -29,9 +29,18 @@ API_KEY=your-xfyun-key
 # 火山方舟 Coding Plan 个人版
 PROVIDER=volcengine-coding
 API_KEY=your-volcano-key
+
+# 讯飞 WebSocket（API_KEY 复用为签名 key，APP_ID/API_SECRET 仍需单独提供）
+PROVIDER=xfyun-websocket
+API_KEY=your-xfyun-api-key
+SPARK_APP_ID=your-app-id
+SPARK_API_SECRET=your-api-secret
 ```
 
-> 仍兼容旧变量：`SPARK_API_PASSWORD` / `SPARK_API_KEY`（讯飞）、`VOLCENGINE_API_KEY` / `ARK_API_KEY`（火山）。当 `API_KEY` 为空时会按旧变量回退。
+> **凭证兼容回退顺序**（`API_KEY` 为空时按下列顺序查找）：
+> - 讯飞 HTTP 模式：`SPARK_API_PASSWORD` → `SPARK_API_KEY`
+> - 讯飞 WebSocket 模式：`SPARK_API_KEY`（与 `API_KEY` 等价）
+> - 火山方舟：`VOLCENGINE_API_KEY` → `ARK_API_KEY`
 
 ---
 
@@ -245,6 +254,17 @@ claude
 | `MCP_MAX_MESSAGES` | `40` | 单会话最大消息数（兼容旧 `SPARK_MAX_MESSAGES`） |
 | `MCP_MAX_TOKENS` | 见 Provider | 单次最大输出 tokens（兼容旧 `SPARK_MAX_TOKENS`） |
 
+### Provider 默认值一览
+
+| Provider | `MCP_MAX_CONTEXT_CHARS` | `MCP_MAX_TOKENS` | 备注 |
+|---|---|---|---|
+| `xfyun-coding` | `96000` | `8192` | 套餐场景，限制最宽 |
+| `xfyun-http` | `24000` | `4096` | 通用 HTTP 接口 |
+| `xfyun-websocket` | `24000` | `4096` | WebSocket 端点按 model 自动选择 |
+| `volcengine-coding` | `128000` | `8192` | 上下文最长 |
+
+> **WebSocket 端点选择规则**（`xfyun-websocket` 模式）：当未显式设置 `SPARK_WS_URL` 时，客户端按 `model` 名称自动选择 `wss` 端点——`4.0Ultra` / `generalv3.5` / `max-32k` / `generalv3` / `pro-128k` / `lite` / `kjwx` 等模型各自有专属域名；未列出的模型会回退到 `4.0Ultra` 的 `v4.0/chat` 端点。建议显式指定 `SPARK_WS_URL` 避免歧义。
+
 ---
 
 ## 六、在 Claude Code 提示词中推荐使用
@@ -267,8 +287,13 @@ claude
 **Q: Coding Plan 返回 401 怎么办？**
 
 - 确认 API Key 来自「套餐订阅」页面，而不是星火大模型控制台。
-- 确认 `SPARK_MODE=coding`。
+- 确认 `PROVIDER=xfyun-coding`（或 `SPARK_MODE=coding`）。
 - 确认 model 使用 `astron-code-latest`（默认）。
+
+**Q: Coding Plan 返回 403 怎么办？**
+
+- 鉴权 URL 签名（WebSocket 模式）依赖 `SPARK_API_KEY`（或 `API_KEY`）和 `SPARK_API_SECRET`，三者必须来自同一应用。
+- 火山方舟 403 通常是 endpoint 不存在或模型名拼写错误，先确认 `ark-code-latest` 仍可访问。
 
 **Q: 模型底层怎么切换？**
 
@@ -278,8 +303,35 @@ claude
 
 Coding Plan 有 5 小时/周/月的请求次数限制，高峰期也可能触发平台限流。代码已透传错误信息，建议稍后重试或升级套餐。
 
+**Q: 调用时提示 `Working directory does not exist`？**
+
+每个工具都要求 `cd` 指向**已存在的真实目录**（用于在多 Provider/多租户场景下区分上下文）。CI / 沙箱环境务必先 `mkdir -p` 工作目录。
+
+**Q: 如何调试（查看完整消息历史）？**
+
+调用任意工具时传 `return_all_messages=True`，响应中会带 `all_messages` 字段返回当前会话全部消息。注意：消息历史只在内存中保存，重启 MCP server 后 `SESSION_ID` 失效。
+
 ---
 
-## 八、许可证
+## 八、开发与测试
+
+```bash
+# 安装 dev 依赖
+uv sync
+
+# 运行测试
+uv run pytest
+
+# 直接以 stdio 方式启动服务器（便于手动调试）
+uv run coding-bridge-mcp
+```
+
+测试覆盖：`tests/test_config.py`（Provider 解析 / 凭证回退 / 配置校验）、`tests/test_session.py`（消息历史裁剪）。所有工具的真实调用都通过 mock，不会产生 API 费用。
+
+修改代码后建议先跑一遍 `pytest` 再提交。
+
+---
+
+## 九、许可证
 
 MIT

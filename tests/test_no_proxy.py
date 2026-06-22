@@ -31,6 +31,9 @@ def _settings() -> Settings:
         max_context_chars=96_000,
         max_messages=40,
         max_tokens=8_192,
+        proxy_mode="false",
+        proxy_http=None,
+        proxy_https=None,
     )
 
 

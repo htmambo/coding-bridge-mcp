@@ -15,10 +15,46 @@ from urllib.parse import urlencode, urlparse
 
 import httpx
 
-from coding_bridge_mcp.config import Settings
+from coding_bridge_mcp.config import ProxyEndpoint, Settings
 from coding_bridge_mcp.logging_config import get_logger
 
 logger = get_logger(__name__)
+
+
+def _build_client_kwargs(settings: Settings) -> Dict[str, Any]:
+    """Return httpx.AsyncClient kwargs derived from settings.proxy_mode.
+
+    | PROXY      | trust_env | proxy                                  |
+    |------------|-----------|----------------------------------------|
+    | false (def)| False     | not set (no env injection, no override)|
+    | true / env | True      | not set                                |
+    | custom     | False     | dict mapping scheme to httpx.Proxy     |
+
+    Centralising this keeps the call() body free of branching logic and gives
+    tests a single seam to assert on.
+    """
+    mode = settings.proxy_mode
+    if mode == "custom":
+        proxy: Dict[str, httpx.Proxy] = {}
+        if settings.proxy_http is not None:
+            proxy["http://"] = httpx.Proxy(settings.proxy_http.url())
+        if settings.proxy_https is not None:
+            proxy["https://"] = httpx.Proxy(settings.proxy_https.url())
+        return {
+            "timeout": settings.timeout_seconds,
+            "trust_env": False,
+            "proxy": proxy,
+        }
+    if mode in {"true", "env"}:
+        return {
+            "timeout": settings.timeout_seconds,
+            "trust_env": True,
+        }
+    # mode == "false" — default; never honor env, never use proxy override.
+    return {
+        "timeout": settings.timeout_seconds,
+        "trust_env": False,
+    }
 
 
 class ApiError(Exception):
@@ -83,13 +119,8 @@ class HttpApiClient(ApiClient):
         logger.debug("http_request_payload", model=model, max_tokens=self.settings.max_tokens)
 
         try:
-            # trust_env=False: ignore HTTP_PROXY/HTTPS_PROXY/ALL_PROXY and never
-            # route traffic through a proxy. Direct connect to provider endpoint
-            # by design; see README §5 and docs/Task/TASK_NO_PROXY_PLAN.md.
-            async with httpx.AsyncClient(
-                timeout=self.settings.timeout_seconds,
-                trust_env=False,
-            ) as client:
+            # Proxy handling per Settings.proxy_mode; see _build_client_kwargs.
+            async with httpx.AsyncClient(**_build_client_kwargs(self.settings)) as client:
                 response = await client.post(
                     self.settings.api_url, headers=headers, json=payload
                 )
@@ -257,7 +288,21 @@ class WebSocketApiClient(ApiClient):
         usage: Dict[str, Any] | None = None
 
         try:
-            coro = websockets.connect(auth_url, close_timeout=5)
+            connect_kwargs: Dict[str, Any] = {"close_timeout": 5}
+            # websockets lib reads ``https_proxy`` from env when ``proxy=None``;
+            # pass an explicit value to make intent unambiguous.
+            if self.settings.proxy_mode == "custom" and self.settings.proxy_https is not None:
+                connect_kwargs["proxy"] = self.settings.proxy_https.url()
+            elif self.settings.proxy_mode in {"true", "env"}:
+                # Honor env: websockets >=12 reads ``https_proxy`` automatically
+                # when ``proxy`` is not explicitly set. Leave it absent to opt in.
+                pass
+            # mode == "false": websockets still defaults to honoring ``https_proxy``
+            # env var. The library does not expose a single ``trust_env`` knob
+            # like httpx, so we must scrub the env for this call when mode=false.
+            if self.settings.proxy_mode == "false":
+                connect_kwargs["proxy"] = None
+            coro = websockets.connect(auth_url, **connect_kwargs)
             ws = await asyncio.wait_for(coro, timeout=15)
         except asyncio.TimeoutError as exc:
             logger.error("websocket_connection_timeout", url=safe_url, model=model)

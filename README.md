@@ -307,6 +307,55 @@ claude
 | `MCP_MAX_TOKENS` | 见 Provider | 单次最大输出 tokens（兼容旧 `SPARK_MAX_TOKENS`） |
 | `LOG_LEVEL` | `INFO` | 结构化日志级别（`DEBUG` / `INFO` / `WARNING` / `ERROR`），输出到 stderr |
 
+#### 代理 (PROXY)
+
+默认 `PROXY=false`：忽略 shell 中的 `HTTP_PROXY` / `HTTPS_PROXY` / `ALL_PROXY` 环境变量，强制直连厂商 API。
+
+通过 MCP 启动配置 (`settings.json` → `mcpServers.<name>.env`) 声明：
+
+| `PROXY` | 行为 | 适用场景 |
+|---------|------|---------|
+| `false` / `no` / `off` / `0` *(默认)* | 直连；httpx `trust_env=False` | 普通部署，无需代理 |
+| `true` / `env` / `yes` / `on` / `1` | 读取 shell 中的 `HTTP(S)_PROXY` 环境变量；httpx `trust_env=True` | 已有标准代理出口 |
+| `custom` | 使用下方 `HTTP(S)_PROXY_HOST/PORT` 自定义代理 | 需要绕过环境变量、或需要认证 |
+
+`custom` 模式下还支持：
+
+| 变量 | 必填 | 说明 |
+|------|------|------|
+| `HTTP_PROXY_HOST` | ✅ | HTTP scheme 代理主机 |
+| `HTTP_PROXY_PORT` | ✅ | HTTP scheme 代理端口 (1-65535) |
+| `HTTP_PROXY_USER` | ❌ | 代理认证用户名；提供时 `HTTP_PROXY_PASSWORD` 必填 |
+| `HTTP_PROXY_PASSWORD` | ❌ | 代理认证密码 |
+| `HTTPS_PROXY_HOST` | ✅ | HTTPS scheme 代理主机 |
+| `HTTPS_PROXY_PORT` | ✅ | HTTPS scheme 代理端口 |
+| `HTTPS_PROXY_USER` | ❌ | 同上 |
+| `HTTPS_PROXY_PASSWORD` | ❌ | 同上 |
+
+`PROXY=custom` 时 HTTP 与 HTTPS 两组 host/port **必须同时提供**，否则启动期报错。
+
+**settings.json 示例**:
+
+```json
+{
+  "mcpServers": {
+    "coding-bridge": {
+      "command": "uv",
+      "args": ["run", "coding-bridge-mcp"],
+      "env": {
+        "PROVIDER": "xfyun-coding",
+        "API_KEY": "<your-key>",
+        "PROXY": "custom",
+        "HTTP_PROXY_HOST": "proxy.internal",
+        "HTTP_PROXY_PORT": "8080",
+        "HTTPS_PROXY_HOST": "proxy.internal",
+        "HTTPS_PROXY_PORT": "8443"
+      }
+    }
+  }
+}
+```
+
 ### Provider 默认值一览
 
 | Provider | `MCP_MAX_CONTEXT_CHARS` | `MCP_MAX_TOKENS` | 备注 |

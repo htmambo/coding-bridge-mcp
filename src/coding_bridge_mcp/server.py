@@ -73,6 +73,12 @@ _client: ApiClient | None = None
 _client_error: str | None = None
 _client_lock = asyncio.Lock()
 
+# Indirection seam for tests: by default delegate to ``create_client`` from
+# the api_client module, but callers (and tests) can monkeypatch this module
+# attribute to inject a fake client without touching ``create_client`` itself
+# or the production initialization path.
+_client_factory = create_client
+
 # In-memory session store: session_id -> list of messages
 _sessions: Dict[str, List[Dict[str, str]]] = {}
 _sessions_lock = asyncio.Lock()
@@ -123,7 +129,7 @@ async def _ensure_client() -> tuple[ApiClient | None, str | None]:
         try:
             assert _settings is not None
             validate_settings(_settings)
-            _client = create_client(_settings)
+            _client = _client_factory(_settings)
             logger.info(
                 "client_initialized",
                 provider=_settings.provider,

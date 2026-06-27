@@ -622,7 +622,86 @@ Coding Plan / 星火返回的审查结论仅供参考，你仍需保持独立判
 
 ---
 
-## 七、常见问题
+## 七、与 XPowers 联合使用
+
+XPowers 提供「结构化工作流 + 内部多 Agent 验证」，coding-bridge 提供「外部 Coding Plan 专家级审查」。两者可以互补：XPowers 负责计划、跟踪、内部验证；coding-bridge 负责外部代码/计划审查。
+
+### 最简单的联合方式：AGENTS.md + XPowers 共存
+
+保留项目根目录的 `AGENTS.md`（要求改完代码后调用 `mcp__coding-bridge__review_code`），同时安装 XPowers。Kimi 会同时读取 XPowers skills 和 `AGENTS.md`，模型通常会按以下流程执行：
+
+```
+形成思路
+  ↓
+XPowers write-plan → 生成实现计划
+  ↓
+实现代码
+  ↓
+AGENTS.md 触发 → coding-bridge review_code（外部审查）
+  ↓
+XPowers test-runner → 运行测试
+  ↓
+XPowers review-implementation → 对照需求检查
+  ↓
+XPowers verification-before-completion → 最终确认
+  ↓
+任务完成
+```
+
+### 把 coding-bridge 嵌入 XPowers verification 流程
+
+如果你希望 XPowers 的 verification **明确强制**调用 coding-bridge，可以在 XPowers 的 skill 或自定义 skill 中加入以下步骤：
+
+```markdown
+## 外部 Coding Plan 审查
+
+在完成内部 review-implementation 和测试后，调用：
+
+- `mcp__coding-bridge__review_code`
+  - `CODE`: 本次修改的完整代码或 diff
+  - `cd`: 项目根目录
+  - `REQUIREMENTS`: 原始需求、已发现的内部审查问题
+
+将 coding-bridge 返回的风险和建议作为验收依据之一。
+```
+
+> 注意：直接修改 `~/.kimi-code/skills/` 下的 XPowers skill 文件会在更新时被覆盖。建议复制到项目级 `.kimi-code/skills/` 做覆盖，或创建独立自定义 skill。
+
+### 自定义 skill 示例
+
+在项目 `.kimi-code/skills/coding-bridge-review/SKILL.md` 中创建：
+
+```markdown
+---
+name: coding-bridge-review
+description: Use when you need an external Coding Plan review after implementing code changes.
+---
+
+# Coding Bridge Review
+
+When verification is needed:
+
+1. Collect the changed code or diff.
+2. Call `mcp__coding-bridge__review_code` with `cd` set to project root.
+3. Summarize findings and decide if fixes are needed.
+4. If fixes are made, repeat the review.
+```
+
+然后在 `AGENTS.md` 中加上：
+
+```markdown
+完成代码修改后，优先调用 `coding-bridge-review` skill 进行外部 Coding Plan 审查。
+```
+
+### 注意事项
+
+- **成本叠加**：XPowers 内部多 Agent 审查 + coding-bridge 外部审查会同时消耗模型 token 和 Coding Plan 套餐额度。
+- **结论冲突**：如果 XPowers 内部审查与 coding-bridge 结论冲突，可在 `AGENTS.md` 中写明优先级，例如「以 coding-bridge 的安全与架构建议为最终依据」。
+- **避免重复**：XPowers 内部 reviewer 负责基础检查，coding-bridge 负责外部视角的深层问题，分工更合理。
+
+---
+
+## 八、常见问题
 
 **Q: Coding Plan 返回 401 怎么办？**
 
@@ -657,7 +736,7 @@ Coding Plan 有 5 小时/周/月的请求次数限制，高峰期也可能触发
 
 ---
 
-## 八、更新方式
+## 九、更新方式
 
 通过 `claude mcp add` 安装后，命令注册在 Claude Code 配置中固定不变。更新 = 让 `claude` 启动时重新拉取新版本。
 
@@ -721,7 +800,7 @@ uvx --from git+https://github.com/htmambo/coding-bridge-mcp.git@main \
 
 ---
 
-## 九、开发与测试
+## 十、开发与测试
 
 ```bash
 # 安装 dev 依赖
@@ -740,6 +819,6 @@ uv run coding-bridge-mcp
 
 ---
 
-## 十、许可证
+## 十一、许可证
 
 MIT

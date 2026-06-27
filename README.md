@@ -490,7 +490,7 @@ claude
 | `VOLCENGINE_API_KEY` | - | 火山方舟 Coding Plan API Key |
 | `VOLCENGINE_API_URL` | 见 Provider | 火山 HTTP 端点覆盖 |
 | `VOLCENGINE_MODEL` | `ark-code-latest` | 火山默认模型覆盖 |
-| `MCP_TIMEOUT_SECONDS` | `120` | 请求超时（兼容旧 `SPARK_TIMEOUT_SECONDS`） |
+| `MCP_TIMEOUT_SECONDS` | `300` | 请求超时（兼容旧 `SPARK_TIMEOUT_SECONDS`） |
 | `MCP_MAX_CONTEXT_CHARS` | 见 Provider | 上下文字符上限（兼容旧 `SPARK_MAX_CONTEXT_CHARS`） |
 | `MCP_MAX_MESSAGES` | `40` | 单会话最大消息数（兼容旧 `SPARK_MAX_MESSAGES`） |
 | `MCP_MAX_TOKENS` | 见 Provider | 单次最大输出 tokens（兼容旧 `SPARK_MAX_TOKENS`） |
@@ -733,6 +733,58 @@ Coding Plan 有 5 小时/周/月的请求次数限制，高峰期也可能触发
 **Q: 为什么修改了 `.env` 文件中的凭证，但依然提示鉴权失败？**
 
 应用加载 `.env` 文件时**不覆盖**已存在的系统环境变量（`override=False`），即**系统环境变量的优先级始终高于 `.env`**。请检查 Shell / CI 配置中是否设置了旧凭证。
+
+**Q: 调用 coding-bridge 超时或被中途打断，超时在哪里设置？**
+
+超时分两层，两者都需调到足够大且相互匹配：
+
+1. **客户端层（Claude Code / Kimi Code → coding-bridge 工具调用）**：由 MCP 宿主对单次工具调用的超时控制。
+   - **Claude Code**：默认 `MCP_TOOL_TIMEOUT` 约 28 小时，基本不会超时；coding-bridge 为 stdio 类型，不受 5 分钟空闲断开（`CLAUDE_CODE_MCP_TOOL_IDLE_TIMEOUT`，仅针对 HTTP/SSE）影响。如需显式上调，在 `~/.claude.json` 的 `coding-bridge` 块加 `timeout`（单位毫秒），仅对该服务生效，改完**重启 Claude Code**。
+   - **Kimi Code**：默认 `toolTimeoutMs` 为 **30000 毫秒（30 秒）**，审长代码或复杂计划时容易触发 `-32001: Request timed out`。在 `~/.kimi-code/mcp.json`（或项目级 `.kimi-code/mcp.json`）对应 server 条目中添加 `toolTimeoutMs` 即可调整，改完**重启 Kimi 会话**。`startupTimeoutMs` 控制 server 启动/连接超时，默认同样 30000 毫秒，首次 `uvx` 拉取构建较慢时也可能需要上调。
+2. **服务端层（coding-bridge → 上游 LLM）**：由 `MCP_TIMEOUT_SECONDS`（旧名 `SPARK_TIMEOUT_SECONDS`）控制，**默认 300 秒**（经多轮及高峰期实测，120 秒在上游 LLM 高负载时易被打断），超过即被 `httpx` 打断（见 `src/coding_bridge_mcp/config.py`）。
+   - `uvx` 从 git 启动时不会加载仓库 `.env`，需在宿主配置（`~/.claude.json` 或 `~/.kimi-code/mcp.json`）的 `env` 字段显式传入才可靠。
+
+建议客户端超时 ≤ 服务端超时，避免宿主未放弃时 coding-bridge 已因上游超时报错：
+
+**Claude Code 示例：**
+
+```jsonc
+"coding-bridge": {
+  "type": "stdio",
+  "command": "uvx",
+  "args": ["--from", "git+https://github.com/htmambo/coding-bridge-mcp.git", "coding-bridge-mcp"],
+  "timeout": 600000,                       // 客户端层：10 分钟等待工具返回
+  "env": {
+    "PROVIDER": "volcengine-coding",
+    "API_KEY": "ark-...",
+    "MCP_TIMEOUT_SECONDS": "600"           // 服务端层：10 分钟等待上游 LLM
+  }
+}
+```
+
+**Kimi Code 示例：**
+
+```json
+{
+  "mcpServers": {
+    "coding-bridge": {
+      "command": "uvx",
+      "args": [
+        "--from",
+        "git+https://github.com/htmambo/coding-bridge-mcp.git",
+        "coding-bridge-mcp"
+      ],
+      "env": {
+        "PROVIDER": "volcengine-coding",
+        "API_KEY": "ark-...",
+        "MCP_TIMEOUT_SECONDS": "600"
+      },
+      "startupTimeoutMs": 60000,
+      "toolTimeoutMs": 300000
+    }
+  }
+}
+```
 
 ---
 

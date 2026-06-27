@@ -161,7 +161,7 @@ def load_settings() -> Settings:
     profile = get_provider(provider_name)
 
     # Generic tunables, with legacy SPARK_* fallbacks for backward compatibility.
-    timeout_seconds = float(_env(["MCP_TIMEOUT_SECONDS", "SPARK_TIMEOUT_SECONDS"], "120"))
+    timeout_seconds = float(_env(["MCP_TIMEOUT_SECONDS", "SPARK_TIMEOUT_SECONDS"], "300"))
     max_context_chars = int(
         _env(
             ["MCP_MAX_CONTEXT_CHARS", "SPARK_MAX_CONTEXT_CHARS"],

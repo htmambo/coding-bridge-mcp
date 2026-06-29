@@ -71,11 +71,25 @@ VOLCENGINE_CODING = ProviderProfile(
     model_env_vars=["VOLCENGINE_MODEL", "ARK_MODEL", "SPARK_DEFAULT_MODEL"],
 )
 
+# Baidu Qianfan Coding Plan profile (OpenAI-compatible).
+QIANFAN_CODING = ProviderProfile(
+    name="qianfan-coding",
+    mode="http",
+    default_api_url="https://qianfan.baidubce.com/v2/coding",
+    default_model="qianfan-code-latest",
+    default_max_context_chars=96_000,
+    default_max_tokens=8_192,
+    api_key_env_vars=["API_KEY", "QIANFAN_API_KEY"],
+    api_url_env_vars=["QIANFAN_API_URL"],
+    model_env_vars=["QIANFAN_MODEL"],
+)
+
 PROVIDERS = {
     XFYUN_CODING.name: XFYUN_CODING,
     XFYUN_HTTP.name: XFYUN_HTTP,
     XFYUN_WEBSOCKET.name: XFYUN_WEBSOCKET,
     VOLCENGINE_CODING.name: VOLCENGINE_CODING,
+    QIANFAN_CODING.name: QIANFAN_CODING,
 }
 
 # Backward-compatible mapping from legacy SPARK_MODE to new provider names.

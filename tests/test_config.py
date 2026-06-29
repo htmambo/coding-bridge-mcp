@@ -28,6 +28,9 @@ def clean_env(monkeypatch):
         "VOLCENGINE_API_KEY",
         "VOLCENGINE_API_URL",
         "VOLCENGINE_MODEL",
+        "QIANFAN_API_KEY",
+        "QIANFAN_API_URL",
+        "QIANFAN_MODEL",
         "MCP_MAX_CONTEXT_CHARS",
         "MCP_MAX_TOKENS",
     ]:
@@ -101,6 +104,44 @@ def test_volcengine_defaults():
     assert "ark.cn-beijing.volces.com" in settings.api_url
     assert settings.default_model == "ark-code-latest"
     assert settings.api_password == "volc-key"
+
+
+def test_qianfan_defaults():
+    os.environ["PROVIDER"] = "qianfan-coding"
+    os.environ["QIANFAN_API_KEY"] = "qianfan-key"
+    reload(config_module)
+    settings = config_module.load_settings()
+    config_module.validate_settings(settings)
+
+    assert settings.provider == "qianfan-coding"
+    assert settings.mode == "http"
+    assert settings.api_url == "https://qianfan.baidubce.com/v2/coding"
+    assert settings.default_model == "qianfan-code-latest"
+    assert settings.max_context_chars == 96000
+    assert settings.max_tokens == 8192
+    assert settings.api_password == "qianfan-key"
+
+
+def test_qianfan_uses_generic_api_key():
+    os.environ["PROVIDER"] = "qianfan-coding"
+    os.environ["API_KEY"] = "generic-key"
+    reload(config_module)
+    settings = config_module.load_settings()
+    config_module.validate_settings(settings)
+
+    assert settings.api_password == "generic-key"
+
+
+def test_qianfan_api_key_takes_precedence_over_specific():
+    # Lock first-match-wins semantics: API_KEY wins when both are set.
+    os.environ["PROVIDER"] = "qianfan-coding"
+    os.environ["API_KEY"] = "generic-key"
+    os.environ["QIANFAN_API_KEY"] = "qianfan-key"
+    reload(config_module)
+    settings = config_module.load_settings()
+    config_module.validate_settings(settings)
+
+    assert settings.api_password == "generic-key"
 
 
 def test_coding_uses_generic_api_key():

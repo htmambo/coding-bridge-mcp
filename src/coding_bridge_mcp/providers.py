@@ -102,6 +102,27 @@ OPENCODE_GO = ProviderProfile(
     model_env_vars=["OPENCODE_MODEL"],
 )
 
+# SenseNova (商汤日日新) Token Plan profile (OpenAI-compatible).
+# Auth is a plain ``Authorization: Bearer sk-...`` key (no JWT signing), so the
+# generic HttpApiClient covers it. The chat endpoint is /v1/chat/completions;
+# the ``sensenova-u1-fast`` model is image-generation-only (/v1/images/generations)
+# and is NOT a valid chat model, so it is intentionally not the default here.
+# ``deepseek-v4-flash`` (1M context, reasoning) is the default — its review
+# quality is markedly better than ``sensenova-6.7-flash-lite``. The trade-off:
+# the Token Plan quota is very low (tpm wall hit easily), so prefer the
+# flash-lite model via SENSENOVA_MODEL when throughput matters more than depth.
+SENSENOVA = ProviderProfile(
+    name="sensenova",
+    mode="http",
+    default_api_url="https://token.sensenova.cn/v1/chat/completions",
+    default_model="deepseek-v4-flash",
+    default_max_context_chars=96_000,
+    default_max_tokens=8_192,
+    api_key_env_vars=["API_KEY", "SENSENOVA_API_KEY"],
+    api_url_env_vars=["SENSENOVA_API_URL"],
+    model_env_vars=["SENSENOVA_MODEL"],
+)
+
 PROVIDERS = {
     XFYUN_CODING.name: XFYUN_CODING,
     XFYUN_HTTP.name: XFYUN_HTTP,
@@ -109,6 +130,7 @@ PROVIDERS = {
     VOLCENGINE_CODING.name: VOLCENGINE_CODING,
     QIANFAN_CODING.name: QIANFAN_CODING,
     OPENCODE_GO.name: OPENCODE_GO,
+    SENSENOVA.name: SENSENOVA,
 }
 
 # Backward-compatible mapping from legacy SPARK_MODE to new provider names.

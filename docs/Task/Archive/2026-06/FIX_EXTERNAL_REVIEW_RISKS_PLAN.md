@@ -1,5 +1,6 @@
-**状态**: 🔄 进行中 (开始时间: 2026-06-20)
+**状态**: ✅ Completed (完成时间: 2026-07-02; 开始时间: 2026-06-20)
 > 对应 fullauto 状态：.omc/fullauto/fix-external-review-risks/state.json
+> 归档说明：任务实质于 2026-06 完成（见下方验收段），2026-07-02 补办归档。
 
 ## 任务目标
 按 coding-bridge 外部审查 (REJECTED) 优先级修复当前未提交改动中的 7 项风险。

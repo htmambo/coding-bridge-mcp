@@ -49,6 +49,7 @@ include = ["src/coding_bridge_mcp", "README.md", "LICENSE"]
 dev = [
     "pytest>=9.1.0",
     "pytest-asyncio>=1.4.0",
+    "ruff>=0.6",
 ]
 
 [tool.pytest.ini_options]
@@ -62,3 +63,14 @@ markers = [
     "deepseek_live: live smoke test against the DeepSeek official API",
 ]
 addopts = "-m 'not volcengine_live and not opencode_live and not deepseek_live'"
+
+[tool.ruff]
+# Whole-repo lint, matching the historical `ruff check src tests` acceptance gate.
+# Default rule set (pyflakes + pycodestyle E/F) is intentionally kept tight.
+
+[tool.ruff.lint.per-file-ignores]
+# server.py calls load_dotenv(override=False) at import time BEFORE importing
+# config/api_client/logging_config, because those modules read environment
+# variables at import. Reordering would break env-var loading — a functional
+# regression — so the resulting E402 is suppressed at file level.
+"src/coding_bridge_mcp/server.py" = ["E402"]

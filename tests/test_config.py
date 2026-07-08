@@ -18,10 +18,7 @@ def clean_env(monkeypatch):
         "API_KEY",
         "SPARK_API_PASSWORD",
         "SPARK_API_KEY",
-        "SPARK_APP_ID",
-        "SPARK_API_SECRET",
         "SPARK_API_URL",
-        "SPARK_WS_URL",
         "SPARK_DEFAULT_MODEL",
         "SPARK_MAX_CONTEXT_CHARS",
         "SPARK_MAX_TOKENS",
@@ -44,6 +41,14 @@ def clean_env(monkeypatch):
         "MCP_MAX_TOKENS",
     ]:
         monkeypatch.delenv(key, raising=False)
+
+
+@pytest.mark.parametrize("provider", ["xfyun-http", "xfyun-websocket", "invalid"])
+def test_invalid_provider_raises(provider, monkeypatch):
+    monkeypatch.setenv("PROVIDER", provider)
+    reload(config_module)
+    with pytest.raises(ValueError, match="Invalid PROVIDER"):
+        config_module.load_settings()
 
 
 def test_coding_defaults():
@@ -70,35 +75,6 @@ def test_provider_coding():
 
     assert settings.provider == "xfyun-coding"
     assert settings.mode == "http"
-
-
-def test_http_defaults():
-    os.environ["SPARK_MODE"] = "http"
-    os.environ["SPARK_API_PASSWORD"] = "pwd"
-    reload(config_module)
-    settings = config_module.load_settings()
-    config_module.validate_settings(settings)
-
-    assert settings.provider == "xfyun-http"
-    assert settings.mode == "http"
-    assert "spark-api-open" in settings.api_url
-    assert settings.default_model == "4.0Ultra"
-
-
-def test_websocket_defaults():
-    os.environ["SPARK_MODE"] = "websocket"
-    os.environ["SPARK_APP_ID"] = "appid"
-    os.environ["SPARK_API_KEY"] = "apikey"
-    os.environ["SPARK_API_SECRET"] = "secret"
-    reload(config_module)
-    settings = config_module.load_settings()
-    config_module.validate_settings(settings)
-
-    assert settings.provider == "xfyun-websocket"
-    assert settings.mode == "websocket"
-    assert settings.app_id == "appid"
-    assert settings.api_key == "apikey"
-    assert settings.api_secret == "secret"
 
 
 def test_volcengine_defaults():
@@ -309,24 +285,26 @@ def test_volcengine_uses_generic_api_key():
     assert settings.api_password == "generic-key"
 
 
-def test_websocket_uses_generic_api_key():
-    os.environ["SPARK_MODE"] = "websocket"
-    os.environ["SPARK_APP_ID"] = "appid"
-    os.environ["API_KEY"] = "generic-key"
-    os.environ["SPARK_API_SECRET"] = "secret"
-    reload(config_module)
-    settings = config_module.load_settings()
-    config_module.validate_settings(settings)
-
-    assert settings.api_key == "generic-key"
-
-
 def test_coding_missing_key():
     os.environ["SPARK_MODE"] = "coding"
     reload(config_module)
     settings = config_module.load_settings()
     with pytest.raises(RuntimeError, match="SPARK_API_PASSWORD"):
         config_module.validate_settings(settings)
+
+
+def test_deprecated_spark_mode_http_raises():
+    os.environ["SPARK_MODE"] = "http"
+    reload(config_module)
+    with pytest.raises(ValueError, match="SPARK_MODE='http' is no longer supported"):
+        config_module.load_settings()
+
+
+def test_deprecated_spark_mode_websocket_raises():
+    os.environ["SPARK_MODE"] = "websocket"
+    reload(config_module)
+    with pytest.raises(ValueError, match="SPARK_MODE='websocket' is no longer supported"):
+        config_module.load_settings()
 
 
 def test_client_factory():

@@ -1,17 +1,10 @@
-"""API clients for HTTP (OpenAI-compatible) and WebSocket subscriptions."""
+"""OpenAI-compatible HTTP API client for coding plan services."""
 
 from __future__ import annotations
 
-import asyncio
-import base64
-import hashlib
-import hmac
-import json
 from abc import ABC, abstractmethod
-from datetime import datetime, timezone
-from email.utils import format_datetime
 from typing import Any, Dict, List, Tuple
-from urllib.parse import urlencode, urlparse
+from urllib.parse import urlparse
 
 import httpx
 
@@ -62,13 +55,21 @@ class ApiError(Exception):
 
 
 def _safe_url(url: str) -> str:
-    """Return scheme+netloc+path of ``url`` with any query/fragment stripped.
+    """Return scheme+host+path of ``url`` with any credentials/query/fragment stripped.
 
     Used for logging to avoid leaking credentials that some providers place in
-    the URL (e.g. signed WebSocket auth URLs).
+    the URL.
     """
     parsed = urlparse(url)
-    return f"{parsed.scheme}://{parsed.netloc}{parsed.path or ''}"
+    host = parsed.hostname or ""
+    # IPv6 addresses must be wrapped in brackets.
+    if ":" in host:
+        host = f"[{host}]"
+    if parsed.port is not None:
+        netloc = f"{host}:{parsed.port}"
+    else:
+        netloc = host
+    return f"{parsed.scheme}://{netloc}{parsed.path or ''}"
 
 
 def _normalize_usage(usage: Dict[str, Any] | None) -> Dict[str, Any] | None:
@@ -254,208 +255,8 @@ class HttpApiClient(ApiClient):
         return content, usage
 
 
-class WebSocketApiClient(ApiClient):
-    """Native WebSocket client (uses AppID + APIKey + APISecret)."""
-
-    # Default endpoints map domain -> wss url. Users can override via api_url
-    # (populated from the active provider profile's api_url_env_vars).
-    DEFAULT_WS_URLS: Dict[str, str] = {
-        "4.0Ultra": "wss://spark-api.xf-yun.com/v4.0/chat",
-        "generalv3.5": "wss://spark-api.xf-yun.com/v3.5/chat",
-        "max-32k": "wss://spark-api.xf-yun.com/v3.5/chat",
-        "generalv3": "wss://spark-api.xf-yun.com/v3.1/chat",
-        "pro-128k": "wss://spark-api.xf-yun.com/v3.1/chat",
-        "lite": "wss://spark-api.xf-yun.com/v1.1/chat",
-        "kjwx": "wss://spark-api.xf-yun.com/v1.1/chat",
-    }
-
-    DEFAULT_MAX_TOKENS: Dict[str, int] = {
-        "4.0Ultra": 32768,
-        "generalv3.5": 4096,
-        "max-32k": 32768,
-        "generalv3": 4096,
-        "pro-128k": 4096,
-        "lite": 4096,
-        "kjwx": 4096,
-    }
-
-    def __init__(self, settings: Settings):
-        self.settings = settings
-        try:
-            import websockets  # noqa: F401
-        except ImportError as exc:
-            raise RuntimeError(
-                "WebSocket mode requires the 'websockets' package. "
-                "Install it with: uv add websockets"
-            ) from exc
-
-    def _ws_url(self, model: str) -> str:
-        if self.settings.api_url:
-            return self.settings.api_url
-        return self.DEFAULT_WS_URLS.get(model, "wss://spark-api.xf-yun.com/v4.0/chat")
-
-    def _build_auth_url(self, url: str) -> str:
-        parsed = urlparse(url)
-        host = parsed.netloc
-        path = parsed.path or "/"
-        date = format_datetime(datetime.now(timezone.utc), usegmt=True)
-
-        signature_origin = f"host: {host}\ndate: {date}\nGET {path} HTTP/1.1"
-        signature = base64.b64encode(
-            hmac.new(
-                self.settings.api_secret.encode("utf-8"),
-                signature_origin.encode("utf-8"),
-                hashlib.sha256,
-            ).digest()
-        ).decode("utf-8")
-
-        authorization_origin = (
-            f'api_key="{self.settings.api_key}", '
-            f'algorithm="hmac-sha256", '
-            f'headers="host date request-line", '
-            f'signature="{signature}"'
-        )
-        authorization = base64.b64encode(
-            authorization_origin.encode("utf-8")
-        ).decode("utf-8")
-
-        params = {"authorization": authorization, "date": date, "host": host}
-        return f"{url}?{urlencode(params)}"
-
-    def _build_request(
-        self,
-        messages: List[Dict[str, str]],
-        model: str,
-        temperature: float,
-    ) -> Dict[str, Any]:
-        # WebSocket protocol uses 0..1 temperature range and different defaults.
-        ws_temperature = max(0.01, min(1.0, temperature))
-        return {
-            "header": {"app_id": self.settings.app_id, "uid": "coding_bridge_mcp"},
-            "parameter": {
-                "chat": {
-                    "domain": model,
-                    "temperature": ws_temperature,
-                    "max_tokens": self.DEFAULT_MAX_TOKENS.get(model, 4096),
-                    "top_k": 4,
-                }
-            },
-            "payload": {"message": {"text": messages}},
-        }
-
-    async def call(
-        self,
-        messages: List[Dict[str, str]],
-        model: str,
-        temperature: float = 1.0,
-    ) -> Tuple[str, Dict[str, Any] | None]:
-        import websockets
-
-        url = self._ws_url(model)
-        auth_url = self._build_auth_url(url)
-        request = self._build_request(messages, model, temperature)
-
-        safe_url = _safe_url(url)
-        logger.info("websocket_request", url=safe_url, model=model, message_count=len(messages))
-
-        content_parts: List[str] = []
-        usage: Dict[str, Any] | None = None
-
-        try:
-            connect_kwargs: Dict[str, Any] = {"close_timeout": 5}
-            # websockets lib reads ``https_proxy`` from env when ``proxy=None``;
-            # pass an explicit value to make intent unambiguous.
-            if self.settings.proxy_mode == "custom" and self.settings.proxy_https is not None:
-                connect_kwargs["proxy"] = self.settings.proxy_https.url()
-            elif self.settings.proxy_mode in {"true", "env"}:
-                # Honor env: websockets >=12 reads ``https_proxy`` automatically
-                # when ``proxy`` is not explicitly set. Leave it absent to opt in.
-                pass
-            # mode == "false": websockets still defaults to honoring ``https_proxy``
-            # env var. The library does not expose a single ``trust_env`` knob
-            # like httpx, so we must scrub the env for this call when mode=false.
-            if self.settings.proxy_mode == "false":
-                connect_kwargs["proxy"] = None
-            coro = websockets.connect(auth_url, **connect_kwargs)
-            ws = await asyncio.wait_for(coro, timeout=15)
-        except asyncio.TimeoutError as exc:
-            logger.error("websocket_connection_timeout", url=safe_url, model=model)
-            raise ApiError("WebSocket connection timed out") from exc
-        except Exception as exc:
-            # NOTE: do not log `exc` directly; the underlying `websockets`
-            # library embeds the full URL (including the signed `auth_url`) in
-            # its exception message. Log only the exception class name.
-            logger.error(
-                "websocket_connection_failed",
-                url=safe_url,
-                model=model,
-                exc_type=type(exc).__name__,
-            )
-            raise ApiError(f"WebSocket connection failed: {type(exc).__name__}") from exc
-
-        try:
-            await ws.send(json.dumps(request))
-            async for raw in ws:
-                try:
-                    data = json.loads(raw)
-                except json.JSONDecodeError as exc:
-                    raise ApiError(f"Invalid WebSocket frame: {raw}") from exc
-
-                header = data.get("header", {})
-                code = header.get("code", 0)
-                if code != 0:
-                    logger.error(
-                        "websocket_error_frame",
-                        url=safe_url,
-                        model=model,
-                        code=code,
-                        message=header.get("message"),
-                    )
-                    raise ApiError(
-                        f"WebSocket error {code}: {header.get('message')} "
-                        f"(sid={header.get('sid')})"
-                    )
-
-                choices = data.get("payload", {}).get("choices", {})
-                for text_item in choices.get("text", []):
-                    part = text_item.get("content")
-                    if part:
-                        content_parts.append(part)
-
-                status = choices.get("status")
-                if status == 2:
-                    usage = _normalize_usage(
-                        data.get("payload", {}).get("usage")
-                    )
-                    logger.info(
-                        "websocket_response_complete",
-                        url=safe_url,
-                        model=model,
-                        has_usage=usage is not None,
-                    )
-                    break
-        except websockets.exceptions.ConnectionClosed as exc:
-            # If we already got the final status=2, this is fine.
-            if usage is None and not content_parts:
-                logger.error(
-                    "websocket_closed_unexpectedly",
-                    url=safe_url,
-                    model=model,
-                    exc_type=type(exc).__name__,
-                )
-                raise ApiError(
-                    f"WebSocket closed unexpectedly: {type(exc).__name__}"
-                ) from exc
-        finally:
-            await ws.close()
-
-        return "".join(content_parts), usage
-
-
 def create_client(settings: Settings) -> ApiClient:
-    """Factory: pick the right client for the configured subscription."""
+    """Factory: return an HTTP client for the configured provider."""
     if settings.mode in {"http", "coding"}:
         return HttpApiClient(settings)
-    if settings.mode == "websocket":
-        return WebSocketApiClient(settings)
-    raise ValueError(f"Unsupported API mode: {settings.mode!r}. Expected 'http' or 'websocket'.")
+    raise ValueError(f"Unsupported API mode: {settings.mode!r}. Expected 'http'.")

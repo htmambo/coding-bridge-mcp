@@ -42,12 +42,9 @@ class Settings:
     """Runtime configuration parsed from environment variables."""
 
     provider: str
-    mode: str  # "http" or "websocket"
-    api_url: str  # HTTP endpoint (full /chat/completions URL) or WS URL
+    mode: str  # "http" (保留字段以备未来协议扩展)
+    api_url: str  # HTTP endpoint (full /chat/completions URL)
     api_password: str  # HTTP Bearer token / API key
-    app_id: str  # WebSocket app id
-    api_key: str  # WebSocket API key (signature)
-    api_secret: str  # WebSocket API secret
     default_model: str
     timeout_seconds: float
     max_context_chars: int
@@ -184,9 +181,6 @@ def load_settings() -> Settings:
         mode=profile.mode,
         api_url=api_url,
         api_password=api_password,
-        app_id=_env("SPARK_APP_ID", ""),
-        api_key=_env(["SPARK_API_KEY", "API_KEY"], ""),
-        api_secret=_env("SPARK_API_SECRET", ""),
         default_model=default_model,
         timeout_seconds=timeout_seconds,
         max_context_chars=max_context_chars,
@@ -212,18 +206,4 @@ def validate_settings(settings: Settings) -> None:
             raise RuntimeError(
                 f"Provider '{settings.provider}' requires one of: "
                 + ", ".join(profile.api_url_env_vars)
-            )
-    elif profile.mode == "websocket":
-        missing = [
-            name
-            for name, value in {
-                "SPARK_APP_ID": settings.app_id,
-                "SPARK_API_KEY": settings.api_key,
-                "SPARK_API_SECRET": settings.api_secret,
-            }.items()
-            if not value
-        ]
-        if missing:
-            raise RuntimeError(
-                "WebSocket provider requires all of: " + ", ".join(missing)
             )

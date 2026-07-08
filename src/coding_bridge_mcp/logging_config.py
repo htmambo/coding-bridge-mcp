@@ -78,8 +78,8 @@ def configure_logging(level: str | None = None) -> None:
 
     root.setLevel(effective_level)
 
-    # Keep noisy HTTP/WebSocket libraries quiet so they don't pollute MCP stdio.
-    for noisy in ("httpx", "httpcore", "websockets"):
+    # Keep noisy HTTP libraries quiet so they don't pollute MCP stdio.
+    for noisy in ("httpx", "httpcore"):
         logging.getLogger(noisy).setLevel(logging.WARNING)
 
 

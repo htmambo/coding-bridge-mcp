@@ -1,7 +1,7 @@
 """Provider profiles for OpenAI-compatible coding plan services."""
 
-from __future__ import annotations
-
+import os
+import warnings
 from dataclasses import dataclass
 from typing import List
 
@@ -11,7 +11,7 @@ class ProviderProfile:
     """Describes a single provider/backend configuration."""
 
     name: str
-    mode: str  # "http" or "websocket"
+    mode: str  # 当前仅支持 "http"（保留字段以备未来协议扩展）
     default_api_url: str
     default_model: str
     default_max_context_chars: int
@@ -21,7 +21,7 @@ class ProviderProfile:
     model_env_vars: List[str]
 
 
-# iFlytek / Xfyun profiles
+# iFlytek / Xfyun Coding Plan profile
 XFYUN_CODING = ProviderProfile(
     name="xfyun-coding",
     mode="http",
@@ -31,30 +31,6 @@ XFYUN_CODING = ProviderProfile(
     default_max_tokens=8_192,
     api_key_env_vars=["API_KEY", "SPARK_API_PASSWORD", "SPARK_API_KEY"],
     api_url_env_vars=["SPARK_API_URL"],
-    model_env_vars=["SPARK_DEFAULT_MODEL"],
-)
-
-XFYUN_HTTP = ProviderProfile(
-    name="xfyun-http",
-    mode="http",
-    default_api_url="https://spark-api-open.xf-yun.com/v1/chat/completions",
-    default_model="4.0Ultra",
-    default_max_context_chars=24_000,
-    default_max_tokens=4_096,
-    api_key_env_vars=["API_KEY", "SPARK_API_PASSWORD", "SPARK_API_KEY"],
-    api_url_env_vars=["SPARK_API_URL"],
-    model_env_vars=["SPARK_DEFAULT_MODEL"],
-)
-
-XFYUN_WEBSOCKET = ProviderProfile(
-    name="xfyun-websocket",
-    mode="websocket",
-    default_api_url="",
-    default_model="4.0Ultra",
-    default_max_context_chars=24_000,
-    default_max_tokens=4_096,
-    api_key_env_vars=[],  # WS uses SPARK_API_KEY separately for signing
-    api_url_env_vars=["SPARK_WS_URL"],
     model_env_vars=["SPARK_DEFAULT_MODEL"],
 )
 
@@ -68,16 +44,15 @@ VOLCENGINE_CODING = ProviderProfile(
     default_max_tokens=8_192,
     api_key_env_vars=["API_KEY", "VOLCENGINE_API_KEY", "ARK_API_KEY"],
     api_url_env_vars=["VOLCENGINE_API_URL", "ARK_API_URL"],
-    model_env_vars=["VOLCENGINE_MODEL", "ARK_MODEL", "SPARK_DEFAULT_MODEL"],
+    model_env_vars=["VOLCENGINE_MODEL", "ARK_MODEL"],
 )
 
 # Baidu Qianfan Coding Plan profile (OpenAI-compatible).
+# The chat endpoint is the full OpenAI-compatible path
+# /v2/coding/chat/completions.
 QIANFAN_CODING = ProviderProfile(
     name="qianfan-coding",
     mode="http",
-    # Path suffix /chat/completions is appended by the platform itself
-    # (千帆 Coding Plan 在基础 URL /v2/coding 之后自动追加 OpenAI 标准路径);
-    # the complete endpoint is therefore /v2/coding/chat/completions.
     default_api_url="https://qianfan.baidubce.com/v2/coding/chat/completions",
     default_model="qianfan-code-latest",
     default_max_context_chars=96_000,
@@ -148,8 +123,6 @@ DEEPSEEK = ProviderProfile(
 
 PROVIDERS = {
     XFYUN_CODING.name: XFYUN_CODING,
-    XFYUN_HTTP.name: XFYUN_HTTP,
-    XFYUN_WEBSOCKET.name: XFYUN_WEBSOCKET,
     VOLCENGINE_CODING.name: VOLCENGINE_CODING,
     QIANFAN_CODING.name: QIANFAN_CODING,
     OPENCODE_GO.name: OPENCODE_GO,
@@ -157,30 +130,54 @@ PROVIDERS = {
     DEEPSEEK.name: DEEPSEEK,
 }
 
-# Backward-compatible mapping from legacy SPARK_MODE to new provider names.
+# Default provider used when neither PROVIDER nor a valid SPARK_MODE is set.
+DEFAULT_PROVIDER_NAME = XFYUN_CODING.name
+
+# Backward-compatible mapping from legacy SPARK_MODE to provider names.
+# SPARK_MODE is deprecated; prefer the PROVIDER environment variable.
+# The removed "http" / "websocket" modes no longer exist and will raise an
+# explicit error instead of silently falling back to the default provider.
 SPARK_MODE_MAP = {
     "coding": XFYUN_CODING.name,
-    "http": XFYUN_HTTP.name,
-    "websocket": XFYUN_WEBSOCKET.name,
 }
 
 
 def resolve_provider_name() -> str:
     """Determine active provider from PROVIDER or legacy SPARK_MODE env vars."""
-    import os
-
     provider = os.environ.get("PROVIDER", "").strip().lower()
     if provider:
+        if provider not in PROVIDERS:
+            raise ValueError(
+                f"Invalid PROVIDER '{provider}'. Supported: {', '.join(PROVIDERS)}"
+            )
         return provider
 
     spark_mode = os.environ.get("SPARK_MODE", "").strip().lower()
-    if spark_mode in SPARK_MODE_MAP:
+    if spark_mode:
+        if spark_mode in ("http", "websocket"):
+            raise ValueError(
+                f"SPARK_MODE='{spark_mode}' is no longer supported. "
+                f"Use PROVIDER='{DEFAULT_PROVIDER_NAME}' instead."
+            )
+        if spark_mode not in SPARK_MODE_MAP:
+            raise ValueError(
+                f"Unsupported SPARK_MODE '{spark_mode}'. "
+                f"Use PROVIDER='{DEFAULT_PROVIDER_NAME}' instead."
+            )
+        warnings.warn(
+            f"SPARK_MODE='{spark_mode}' is deprecated. "
+            f"Use PROVIDER='{DEFAULT_PROVIDER_NAME}' instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
         return SPARK_MODE_MAP[spark_mode]
 
-    return XFYUN_CODING.name
+    return DEFAULT_PROVIDER_NAME
 
 
 def get_provider(name: str) -> ProviderProfile:
+    if not name:
+        raise ValueError("Provider name must not be empty")
     if name not in PROVIDERS:
         raise ValueError(
             f"Unknown provider '{name}'. Supported: {', '.join(PROVIDERS)}"

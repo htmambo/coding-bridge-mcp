@@ -60,8 +60,9 @@ markers = [
     "volcengine_live: live smoke test against Volcano Engine Ark API",
     "opencode_live: live smoke test against the OpenCode Go API",
     "deepseek_live: live smoke test against the DeepSeek official API",
+    "sensenova_live: live smoke test against the SenseNova Token Plan API",
 ]
-addopts = "-m 'not volcengine_live and not opencode_live and not deepseek_live'"
+addopts = "-m 'not volcengine_live and not opencode_live and not deepseek_live and not sensenova_live'"
 
 [tool.ruff]
 # Whole-repo lint, matching the historical `ruff check src tests` acceptance gate.

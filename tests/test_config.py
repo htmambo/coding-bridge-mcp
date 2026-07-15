@@ -62,7 +62,7 @@ def test_coding_defaults():
     assert settings.mode == "http"
     assert "maas-coding-api" in settings.api_url
     assert settings.default_model == "astron-code-latest"
-    assert settings.max_context_chars == 96000
+    assert settings.max_context_chars == 1_048_576
     assert settings.max_tokens == 8192
 
 
@@ -100,9 +100,9 @@ def test_qianfan_defaults():
 
     assert settings.provider == "qianfan-coding"
     assert settings.mode == "http"
-    assert settings.api_url == "https://qianfan.baidubce.com/v2/coding/chat/completions"
-    assert settings.default_model == "qianfan-code-latest"
-    assert settings.max_context_chars == 96000
+    assert settings.api_url == "https://qianfan.baidubce.com/v2/tokenplan/personal/chat/completions"
+    assert settings.default_model == "glm-5.2"
+    assert settings.max_context_chars == 1_048_576
     assert settings.max_tokens == 8192
     assert settings.api_password == "qianfan-key"
 
@@ -140,7 +140,7 @@ def test_opencode_defaults():
     assert settings.mode == "http"
     assert settings.api_url == "https://opencode.ai/zen/go/v1/chat/completions"
     assert settings.default_model == "glm-5.2"
-    assert settings.max_context_chars == 96000
+    assert settings.max_context_chars == 1_048_576
     assert settings.max_tokens == 8192
     assert settings.api_password == "oc-key"
 
@@ -178,7 +178,7 @@ def test_sensenova_defaults():
     assert settings.mode == "http"
     assert settings.api_url == "https://token.sensenova.cn/v1/chat/completions"
     assert settings.default_model == "deepseek-v4-flash"
-    assert settings.max_context_chars == 96000
+    assert settings.max_context_chars == 1_048_576
     assert settings.max_tokens == 8192
     assert settings.api_password == "sn-key"
 
@@ -227,7 +227,7 @@ def test_deepseek_defaults():
     assert settings.mode == "http"
     assert settings.api_url == "https://api.deepseek.com/chat/completions"
     assert settings.default_model == "deepseek-v4-pro"
-    assert settings.max_context_chars == 96000
+    assert settings.max_context_chars == 1_048_576
     assert settings.max_tokens == 8192
     assert settings.api_password == "ds-key"
 

@@ -47,14 +47,13 @@ VOLCENGINE_CODING = ProviderProfile(
     model_env_vars=["VOLCENGINE_MODEL", "ARK_MODEL"],
 )
 
-# Baidu Qianfan Coding Plan profile (OpenAI-compatible).
-# The chat endpoint is the full OpenAI-compatible path
-# /v2/coding/chat/completions.
+# Baidu Qianfan Token Plan profile (OpenAI-compatible).
+# Endpoint: /v2/tokenplan/personal/chat/completions.
 QIANFAN_CODING = ProviderProfile(
     name="qianfan-coding",
     mode="http",
-    default_api_url="https://qianfan.baidubce.com/v2/coding/chat/completions",
-    default_model="qianfan-code-latest",
+    default_api_url="https://qianfan.baidubce.com/v2/tokenplan/personal/chat/completions",
+    default_model="glm-5.2",
     default_max_context_chars=96_000,
     default_max_tokens=8_192,
     api_key_env_vars=["API_KEY", "QIANFAN_API_KEY"],

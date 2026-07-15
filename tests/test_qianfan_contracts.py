@@ -63,8 +63,8 @@ def test_qianfan_provider_profile_loaded() -> None:
     assert "qianfan-coding" in providers.PROVIDERS
     profile = providers.get_provider("qianfan-coding")
     assert profile.mode == "http"
-    assert profile.default_api_url == "https://qianfan.baidubce.com/v2/coding/chat/completions"
-    assert profile.default_model == "qianfan-code-latest"
+    assert profile.default_api_url == "https://qianfan.baidubce.com/v2/tokenplan/personal/chat/completions"
+    assert profile.default_model == "glm-5.2"
     assert profile.api_key_env_vars == ["API_KEY", "QIANFAN_API_KEY"]
     assert profile.api_url_env_vars == ["QIANFAN_API_URL"]
     assert profile.model_env_vars == ["QIANFAN_MODEL"]
@@ -78,21 +78,21 @@ def test_qianfan_settings_resolve() -> None:
     config_module.validate_settings(settings)
 
     assert settings.provider == "qianfan-coding"
-    assert settings.api_url == "https://qianfan.baidubce.com/v2/coding/chat/completions"
-    assert settings.default_model == "qianfan-code-latest"
+    assert settings.api_url == "https://qianfan.baidubce.com/v2/tokenplan/personal/chat/completions"
+    assert settings.default_model == "glm-5.2"
     assert settings.api_password == "qianfan-test-key"
 
 
 def test_qianfan_url_override_takes_effect() -> None:
     os.environ["PROVIDER"] = "qianfan-coding"
     os.environ["QIANFAN_API_KEY"] = "k"
-    os.environ["QIANFAN_API_URL"] = "https://qianfan-staging.example.com/v2/coding/chat/completions"
-    os.environ["QIANFAN_MODEL"] = "qianfan-code-experimental"
+    os.environ["QIANFAN_API_URL"] = "https://qianfan-staging.example.com/v2/tokenplan/personal/chat/completions"
+    os.environ["QIANFAN_MODEL"] = "glm-5.2-experimental"
     reload(config_module)
     settings = config_module.load_settings()
 
-    assert settings.api_url == "https://qianfan-staging.example.com/v2/coding/chat/completions"
-    assert settings.default_model == "qianfan-code-experimental"
+    assert settings.api_url == "https://qianfan-staging.example.com/v2/tokenplan/personal/chat/completions"
+    assert settings.default_model == "glm-5.2-experimental"
 
 
 def test_qianfan_missing_key_raises() -> None:
@@ -112,9 +112,9 @@ def _qianfan_settings() -> Settings:
     return Settings(
         provider="qianfan-coding",
         mode="http",
-        api_url="https://qianfan.baidubce.com/v2/coding/chat/completions",
+        api_url="https://qianfan.baidubce.com/v2/tokenplan/personal/chat/completions",
         api_password="qianfan-test-key",
-        default_model="qianfan-code-latest",
+        default_model="glm-5.2",
         timeout_seconds=30.0,
         max_context_chars=96_000,
         max_messages=40,
@@ -170,9 +170,9 @@ def test_qianfan_posts_to_documented_endpoint() -> None:
     with _spy_async_client(captured):
         asyncio.run(HttpApiClient(_qianfan_settings()).call(
             [{"role": "user", "content": "ping"}],
-            model="qianfan-code-latest",
+            model="glm-5.2",
         ))
-    assert captured["post_url"] == "https://qianfan.baidubce.com/v2/coding/chat/completions"
+    assert captured["post_url"] == "https://qianfan.baidubce.com/v2/tokenplan/personal/chat/completions"
 
 
 def test_qianfan_sends_bearer_authorization() -> None:
@@ -181,7 +181,7 @@ def test_qianfan_sends_bearer_authorization() -> None:
     with _spy_async_client(captured):
         asyncio.run(HttpApiClient(_qianfan_settings()).call(
             [{"role": "user", "content": "ping"}],
-            model="qianfan-code-latest",
+            model="glm-5.2",
         ))
     headers = captured["post_headers"]
     assert headers.get("Authorization") == "Bearer qianfan-test-key"
@@ -194,10 +194,10 @@ def test_qianfan_request_payload_shape() -> None:
     with _spy_async_client(captured):
         asyncio.run(HttpApiClient(_qianfan_settings()).call(
             [{"role": "user", "content": "ping"}],
-            model="qianfan-code-latest",
+            model="glm-5.2",
         ))
     payload = captured["post_payload"]
-    assert payload["model"] == "qianfan-code-latest"
+    assert payload["model"] == "glm-5.2"
     assert payload["messages"] == [{"role": "user", "content": "ping"}]
     assert payload["stream"] is False
     assert payload["max_tokens"] == 8_192
@@ -220,7 +220,7 @@ def test_qianfan_200_response_returns_content_and_usage() -> None:
         content, usage = asyncio.run(
             HttpApiClient(_qianfan_settings()).call(
                 [{"role": "user", "content": "ping"}],
-                model="qianfan-code-latest",
+                model="glm-5.2",
             )
         )
     assert content == "pong"
@@ -247,7 +247,7 @@ def test_qianfan_4xx_response_surfaces_message() -> None:
         try:
             asyncio.run(HttpApiClient(_qianfan_settings()).call(
                 [{"role": "user", "content": "ping"}],
-                model="qianfan-code-latest",
+                model="glm-5.2",
             ))
         except ApiError_cls as exc:
             assert "invalid api key" in str(exc), (
@@ -268,7 +268,7 @@ def test_qianfan_response_without_usage_returns_none() -> None:
     with _spy_async_client(captured, body=body):
         content, usage = asyncio.run(HttpApiClient(_qianfan_settings()).call(
             [{"role": "user", "content": "ping"}],
-            model="qianfan-code-latest",
+            model="glm-5.2",
         ))
     assert content == "pong"
     assert usage is None

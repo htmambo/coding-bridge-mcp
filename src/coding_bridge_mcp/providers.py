@@ -29,7 +29,7 @@ XFYUN_CODING = ProviderProfile(
     default_model="astron-code-latest",
     default_max_context_chars=1_048_576,
     default_max_tokens=8_192,
-    api_key_env_vars=["API_KEY", "SPARK_API_PASSWORD", "SPARK_API_KEY"],
+    api_key_env_vars=["SPARK_API_KEY", "API_KEY"],
     api_url_env_vars=["SPARK_API_URL"],
     model_env_vars=["SPARK_DEFAULT_MODEL"],
 )
@@ -42,7 +42,7 @@ VOLCENGINE_CODING = ProviderProfile(
     default_model="ark-code-latest",
     default_max_context_chars=1_048_576,
     default_max_tokens=8_192,
-    api_key_env_vars=["API_KEY", "VOLCENGINE_API_KEY", "ARK_API_KEY"],
+    api_key_env_vars=["VOLCENGINE_API_KEY", "API_KEY"],
     api_url_env_vars=["VOLCENGINE_API_URL", "ARK_API_URL"],
     model_env_vars=["VOLCENGINE_MODEL", "ARK_MODEL"],
 )
@@ -56,7 +56,7 @@ QIANFAN_CODING = ProviderProfile(
     default_model="glm-5.2",
     default_max_context_chars=1_048_576,
     default_max_tokens=8_192,
-    api_key_env_vars=["API_KEY", "QIANFAN_API_KEY"],
+    api_key_env_vars=["QIANFAN_API_KEY", "API_KEY"],
     api_url_env_vars=["QIANFAN_API_URL"],
     model_env_vars=["QIANFAN_MODEL"],
 )
@@ -71,7 +71,7 @@ OPENCODE_GO = ProviderProfile(
     default_model="glm-5.2",
     default_max_context_chars=1_048_576,
     default_max_tokens=8_192,
-    api_key_env_vars=["API_KEY", "OPENCODE_API_KEY"],
+    api_key_env_vars=["OPENCODE_API_KEY", "API_KEY"],
     api_url_env_vars=["OPENCODE_API_URL"],
     model_env_vars=["OPENCODE_MODEL"],
 )
@@ -92,7 +92,7 @@ SENSENOVA = ProviderProfile(
     default_model="deepseek-v4-flash",
     default_max_context_chars=1_048_576,
     default_max_tokens=8_192,
-    api_key_env_vars=["API_KEY", "SENSENOVA_API_KEY"],
+    api_key_env_vars=["SENSENOVA_API_KEY", "API_KEY"],
     api_url_env_vars=["SENSENOVA_API_URL"],
     model_env_vars=["SENSENOVA_MODEL"],
 )
@@ -115,7 +115,7 @@ DEEPSEEK = ProviderProfile(
     default_model="deepseek-v4-pro",
     default_max_context_chars=1_048_576,
     default_max_tokens=8_192,
-    api_key_env_vars=["API_KEY", "DEEPSEEK_API_KEY"],
+    api_key_env_vars=["DEEPSEEK_API_KEY", "API_KEY"],
     api_url_env_vars=["DEEPSEEK_API_URL"],
     model_env_vars=["DEEPSEEK_MODEL"],
 )

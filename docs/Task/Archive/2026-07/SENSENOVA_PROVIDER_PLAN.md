@@ -33,7 +33,7 @@
 | 默认模型 | `sensenova-6.7-flash-lite` | 官方全程默认、限额最高（1500 次/5h）、256K 上下文 |
 | 可选模型 | `deepseek-v4-flash` | 1M 上下文 + 思考模式，限额 500 次/5h，经 `SENSENOVA_MODEL` 切换 |
 | 排除模型 | `sensenova-u1-fast` | 图像生成接口（`/v1/images/generations`），非对话模型 |
-| 凭证入口 | `API_KEY` → `SENSENOVA_API_KEY` 回退 | 与其他 Provider 体验一致 |
+| 凭证入口 | `SENSENOVA_API_KEY` → `API_KEY` 回退 | 与其他 Provider 体验一致 |
 | 端点覆盖变量 | `SENSENOVA_API_URL` | 与 `QIANFAN_API_URL` 对齐 |
 | 模型覆盖变量 | `SENSENOVA_MODEL` | 与 `QIANFAN_MODEL` 对齐 |
 | 上下文窗口默认值 | `96000` 字符 | 保守估计（模型实际支持 256K token），可由 `MCP_MAX_CONTEXT_CHARS` 覆盖 |

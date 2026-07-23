@@ -20,7 +20,7 @@
 
 ## 2. 修复目标
 
-1. **移除源码中的明文 key**，改为从环境变量读取（`API_KEY` / `VOLCENGINE_API_KEY` / `ARK_API_KEY`）；
+1. **移除源码中的明文 key**，改为从环境变量读取（`API_KEY` / `VOLCENGINE_API_KEY`）；
 2. 无 key 时 `pytest.skip`，与该测试 opt-in 性质一致；
 3. 加 `load_dotenv(override=False)` 兜底，使项目 `.env` 可用（与 `server.py` 行为一致，兑现 docstring 第 15-17 行的承诺）；
 4. 不改测试的断言逻辑、verbose 脱敏逻辑、其他 provider。

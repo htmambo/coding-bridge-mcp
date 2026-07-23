@@ -35,7 +35,7 @@
 | Provider 名 | `qianfan-coding` | 与 `volcengine-coding` 风格对齐 |
 | 默认端点 | `https://qianfan.baidubce.com/v2/coding` | 用户指定 |
 | 默认模型 | `qianfan-code-latest` | 用户指定 |
-| 凭证入口 | `API_KEY` → `QIANFAN_API_KEY` 回退 | 与 `volcengine-coding` 体验一致 |
+| 凭证入口 | `QIANFAN_API_KEY` → `API_KEY` 回退 | 与 `volcengine-coding` 体验一致 |
 | 端点覆盖变量 | `QIANFAN_API_URL` | 与 `VOLCENGINE_API_URL` 对齐 |
 | 模型覆盖变量 | `QIANFAN_MODEL` | 与 `VOLCENGINE_MODEL` 对齐 |
 | 上下文窗口默认值 | `96000` | 与 `xfyun-coding` 同档（千帆 Coding Plan 套餐规格未在用户侧提供，先取保守中间值；README 会注明可由 `MCP_MAX_CONTEXT_CHARS` 覆盖） |
@@ -88,7 +88,7 @@
 ## 4. 验收标准
 
 - `PROVIDER=qianfan-coding` + `API_KEY=<key>` 时，`load_settings()` 不抛异常、`validate_settings()` 通过；
-- `tests/test_config.py` 中新单测全部通过（含「同时设置 `API_KEY` 与 `QIANFAN_API_KEY` 时取前者」的优先级断言，见下文 §6.1）；
+- `tests/test_config.py` 中新单测全部通过（含专用凭证优先于通用凭证的优先级断言，见下文 §6.1）；
 - `tests/test_proxy_modes.py` 中新增的契约 mock 测试通过（URL / Authorization 头 / payload / 200 usage 解析 / 4xx 错误透传）；
 - `uv run pytest` 全套测试（默认配置）全绿；
 - `uv run ruff check` 无新告警；
@@ -101,13 +101,13 @@
 
 ## 4.2 凭证回退顺序语义（first-match-wins）
 
-`api_key_env_vars=["API_KEY", "QIANFAN_API_KEY"]` 表示**按顺序取第一个非空值**（与 `volcengine-coding` 的 `["API_KEY", "VOLCENGINE_API_KEY", "ARK_API_KEY"]` 一致；语义由 `config._env` 实现）。即：
+`api_key_env_vars=["QIANFAN_API_KEY", "API_KEY"]` 表示**按顺序取第一个非空值**（与 `volcengine-coding` 的 `["VOLCENGINE_API_KEY", "API_KEY"]` 一致；语义由 `config._env` 实现）。即：
 
 - 仅 `API_KEY` → 用 `API_KEY`
 - 仅 `QIANFAN_API_KEY` → 用 `QIANFAN_API_KEY`
-- 两者都设 → 取 `API_KEY`（更靠前）
+- 两者都设 → 取 `QIANFAN_API_KEY`（更靠前）
 
-将新增一条测试 `test_qianfan_api_key_takes_precedence_over_specific` 锁定该行为。
+将新增一条测试锁定专用凭证优先于通用凭证的行为。
 
 ---
 
@@ -135,7 +135,7 @@ QIANFAN_CODING = ProviderProfile(
     default_model="qianfan-code-latest",
     default_max_context_chars=96_000,
     default_max_tokens=8_192,
-    api_key_env_vars=["API_KEY", "QIANFAN_API_KEY"],
+    api_key_env_vars=["QIANFAN_API_KEY", "API_KEY"],
     api_url_env_vars=["QIANFAN_API_URL"],
     model_env_vars=["QIANFAN_MODEL"],
 )

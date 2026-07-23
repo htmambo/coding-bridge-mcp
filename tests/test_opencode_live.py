@@ -61,21 +61,11 @@ _USAGE_LIMIT_RE = re.compile(r"usage limit", re.IGNORECASE)
 def _load_opencode_key() -> str:
     """Resolve the OpenCode Go key from the environment first, then ``.env``.
 
-    Order matches the opencode-go credential fallback: ``API_KEY`` →
-    ``OPENCODE_API_KEY``. We read the *live* environment **before** touching
-    ``.env`` so an explicitly-exported ``API_KEY`` (e.g. on the pytest command
-    line) wins over any unrelated key a project ``.env`` happens to carry —
-    otherwise ``load_dotenv(override=False)`` would silently substitute a key
-    for a different provider and the test would 401 against opencode.
+    Order matches the opencode-go credential fallback: ``OPENCODE_API_KEY`` →
+    ``API_KEY`` after loading ``.env`` with ``override=False``.
     """
-    for name in ("API_KEY", "OPENCODE_API_KEY"):
-        value = os.environ.get(name, "").strip()
-        if value:
-            return value
-    # Only fall back to .env when the live env had nothing. override=False
-    # keeps us consistent with server.py's own .env-loading semantics.
     load_dotenv(override=False)
-    for name in ("API_KEY", "OPENCODE_API_KEY"):
+    for name in ("OPENCODE_API_KEY", "API_KEY"):
         value = os.environ.get(name, "").strip()
         if value:
             return value
@@ -128,10 +118,8 @@ def _build_opencode_settings(monkeypatch):
     ``test_opencode_contracts`` uses for ``config_module``. The lazy client
     globals are reset so the fresh ``_settings`` drives client creation.
 
-    The key is resolved **before** any ``monkeypatch.delenv`` so an
-    explicitly-exported ``API_KEY`` (pytest command line) beats any unrelated
-    key a project ``.env`` carries. ``delenv`` would otherwise wipe the live
-    value and let ``load_dotenv`` substitute a different provider's key.
+    The key is resolved before any ``monkeypatch.delenv`` so the merged
+    environment follows the Provider-specific-first priority.
     """
     key = _load_opencode_key()  # resolves from live env first; may pytest.skip
     for env_key in [
@@ -141,12 +129,11 @@ def _build_opencode_settings(monkeypatch):
         "OPENCODE_API_URL",
         "OPENCODE_MODEL",
         "SPARK_MODE",
-        "SPARK_API_PASSWORD",
         "SPARK_API_KEY",
     ]:
         monkeypatch.delenv(env_key, raising=False)
     monkeypatch.setenv("PROVIDER", "opencode-go")
-    monkeypatch.setenv("API_KEY", key)
+    monkeypatch.setenv("OPENCODE_API_KEY", key)
     # Bump the timeout for the real network round-trip; the default 300s
     # is fine but the project sometimes runs with a smaller MCP_TIMEOUT_SECONDS.
     monkeypatch.setenv("MCP_TIMEOUT_SECONDS", "120")

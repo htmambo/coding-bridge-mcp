@@ -56,22 +56,14 @@ _INSUFFICIENT_BALANCE_RE = re.compile(r"insufficient balance", re.IGNORECASE)
 def _load_deepseek_key() -> str:
     """Resolve the DeepSeek API key from the environment or a project ``.env``.
 
-    Order matches the deepseek credential fallback: ``API_KEY`` →
-    ``DEEPSEEK_API_KEY``. We read the *live* environment **before** touching
-    ``.env`` so an explicitly-exported ``API_KEY`` (e.g. on the pytest command
-    line) wins over any unrelated key a project ``.env`` happens to carry —
-    otherwise ``load_dotenv(override=False)`` would silently substitute a key
-    for a different provider and the test would 401 against DeepSeek.
+    Order matches the deepseek credential fallback: ``DEEPSEEK_API_KEY`` →
+    ``API_KEY`` after loading ``.env`` with ``override=False``.
 
     Raises ``pytest.skip`` when no key is configured — the live test is opt-in
     by marker, and running it without credentials would only produce a 401.
     """
-    for name in ("API_KEY", "DEEPSEEK_API_KEY"):
-        value = os.environ.get(name, "").strip()
-        if value:
-            return value
     load_dotenv(override=False)
-    for name in ("API_KEY", "DEEPSEEK_API_KEY"):
+    for name in ("DEEPSEEK_API_KEY", "API_KEY"):
         value = os.environ.get(name, "").strip()
         if value:
             return value
@@ -112,10 +104,8 @@ def _maybe_verbose(verbose: bool, payload: dict) -> None:
 def _build_deepseek_settings(monkeypatch):
     """Reload config + api_client modules with PROVIDER=deepseek.
 
-    The key is resolved **before** any ``monkeypatch.delenv`` so an
-    explicitly-exported ``API_KEY`` (pytest command line) beats any unrelated
-    key a project ``.env`` carries. ``delenv`` would otherwise wipe the live
-    value and let ``load_dotenv`` substitute a different provider's key.
+    The key is resolved before any ``monkeypatch.delenv`` so the merged
+    environment follows the Provider-specific-first priority.
     """
     key = _load_deepseek_key()  # resolves from live env first; may pytest.skip
     for env_key in [
@@ -125,12 +115,11 @@ def _build_deepseek_settings(monkeypatch):
         "DEEPSEEK_API_URL",
         "DEEPSEEK_MODEL",
         "SPARK_MODE",
-        "SPARK_API_PASSWORD",
         "SPARK_API_KEY",
     ]:
         monkeypatch.delenv(env_key, raising=False)
     monkeypatch.setenv("PROVIDER", "deepseek")
-    monkeypatch.setenv("API_KEY", key)
+    monkeypatch.setenv("DEEPSEEK_API_KEY", key)
     # Bump the timeout for the real network round-trip; deepseek-v4-pro runs in
     # thinking mode and can take a while to produce the final answer.
     monkeypatch.setenv("MCP_TIMEOUT_SECONDS", "120")

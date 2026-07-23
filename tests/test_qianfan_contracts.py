@@ -49,7 +49,7 @@ HttpApiClient = api_client_module.HttpApiClient
 def _clean_env(monkeypatch: pytest.MonkeyPatch) -> None:
     for key in [
         "PROVIDER", "SPARK_MODE",
-        "API_KEY", "SPARK_API_PASSWORD", "SPARK_API_KEY",
+        "API_KEY", "SPARK_API_KEY",
         "QIANFAN_API_KEY", "QIANFAN_API_URL", "QIANFAN_MODEL",
         "MCP_MAX_CONTEXT_CHARS", "MCP_MAX_TOKENS",
     ]:
@@ -65,7 +65,7 @@ def test_qianfan_provider_profile_loaded() -> None:
     assert profile.mode == "http"
     assert profile.default_api_url == "https://qianfan.baidubce.com/v2/tokenplan/personal/chat/completions"
     assert profile.default_model == "glm-5.2"
-    assert profile.api_key_env_vars == ["API_KEY", "QIANFAN_API_KEY"]
+    assert profile.api_key_env_vars == ["QIANFAN_API_KEY", "API_KEY"]
     assert profile.api_url_env_vars == ["QIANFAN_API_URL"]
     assert profile.model_env_vars == ["QIANFAN_MODEL"]
 

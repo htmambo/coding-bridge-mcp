@@ -16,7 +16,6 @@ def clean_env(monkeypatch):
         "PROVIDER",
         "SPARK_MODE",
         "API_KEY",
-        "SPARK_API_PASSWORD",
         "SPARK_API_KEY",
         "SPARK_API_URL",
         "SPARK_DEFAULT_MODEL",
@@ -53,7 +52,7 @@ def test_invalid_provider_raises(provider, monkeypatch):
 
 def test_coding_defaults():
     os.environ["SPARK_MODE"] = "coding"
-    os.environ["SPARK_API_PASSWORD"] = "key"
+    os.environ["SPARK_API_KEY"] = "key"
     reload(config_module)
     settings = config_module.load_settings()
     config_module.validate_settings(settings)
@@ -64,11 +63,12 @@ def test_coding_defaults():
     assert settings.default_model == "astron-code-latest"
     assert settings.max_context_chars == 1_048_576
     assert settings.max_tokens == 8192
+    assert settings.api_password == "key"
 
 
 def test_provider_coding():
     os.environ["PROVIDER"] = "xfyun-coding"
-    os.environ["SPARK_API_PASSWORD"] = "key"
+    os.environ["SPARK_API_KEY"] = "key"
     reload(config_module)
     settings = config_module.load_settings()
     config_module.validate_settings(settings)
@@ -117,8 +117,8 @@ def test_qianfan_uses_generic_api_key():
     assert settings.api_password == "generic-key"
 
 
-def test_qianfan_api_key_takes_precedence_over_specific():
-    # Lock first-match-wins semantics: API_KEY wins when both are set.
+def test_qianfan_specific_api_key_takes_precedence():
+    # Lock first-match-wins semantics: the Provider-specific key wins.
     os.environ["PROVIDER"] = "qianfan-coding"
     os.environ["API_KEY"] = "generic-key"
     os.environ["QIANFAN_API_KEY"] = "qianfan-key"
@@ -126,7 +126,7 @@ def test_qianfan_api_key_takes_precedence_over_specific():
     settings = config_module.load_settings()
     config_module.validate_settings(settings)
 
-    assert settings.api_password == "generic-key"
+    assert settings.api_password == "qianfan-key"
 
 
 def test_opencode_defaults():
@@ -155,8 +155,8 @@ def test_opencode_uses_generic_api_key():
     assert settings.api_password == "generic-key"
 
 
-def test_opencode_api_key_takes_precedence_over_specific():
-    # Lock first-match-wins semantics: API_KEY wins when both are set.
+def test_opencode_specific_api_key_takes_precedence():
+    # Lock first-match-wins semantics: the Provider-specific key wins.
     os.environ["PROVIDER"] = "opencode-go"
     os.environ["API_KEY"] = "generic-key"
     os.environ["OPENCODE_API_KEY"] = "oc-key"
@@ -164,7 +164,7 @@ def test_opencode_api_key_takes_precedence_over_specific():
     settings = config_module.load_settings()
     config_module.validate_settings(settings)
 
-    assert settings.api_password == "generic-key"
+    assert settings.api_password == "oc-key"
 
 
 def test_sensenova_defaults():
@@ -193,8 +193,8 @@ def test_sensenova_uses_generic_api_key():
     assert settings.api_password == "generic-key"
 
 
-def test_sensenova_api_key_takes_precedence_over_specific():
-    # Lock first-match-wins semantics: API_KEY wins when both are set.
+def test_sensenova_specific_api_key_takes_precedence():
+    # Lock first-match-wins semantics: the Provider-specific key wins.
     os.environ["PROVIDER"] = "sensenova"
     os.environ["API_KEY"] = "generic-key"
     os.environ["SENSENOVA_API_KEY"] = "sn-key"
@@ -202,7 +202,7 @@ def test_sensenova_api_key_takes_precedence_over_specific():
     settings = config_module.load_settings()
     config_module.validate_settings(settings)
 
-    assert settings.api_password == "generic-key"
+    assert settings.api_password == "sn-key"
 
 
 def test_sensenova_model_override():
@@ -242,8 +242,8 @@ def test_deepseek_uses_generic_api_key():
     assert settings.api_password == "generic-key"
 
 
-def test_deepseek_api_key_takes_precedence_over_specific():
-    # Lock first-match-wins semantics: API_KEY wins when both are set.
+def test_deepseek_specific_api_key_takes_precedence():
+    # Lock first-match-wins semantics: the Provider-specific key wins.
     os.environ["PROVIDER"] = "deepseek"
     os.environ["API_KEY"] = "generic-key"
     os.environ["DEEPSEEK_API_KEY"] = "ds-key"
@@ -251,7 +251,7 @@ def test_deepseek_api_key_takes_precedence_over_specific():
     settings = config_module.load_settings()
     config_module.validate_settings(settings)
 
-    assert settings.api_password == "generic-key"
+    assert settings.api_password == "ds-key"
 
 
 def test_deepseek_model_override():
@@ -265,7 +265,18 @@ def test_deepseek_model_override():
     assert settings.default_model == "deepseek-v4-flash"
 
 
-def test_coding_uses_generic_api_key():
+def test_coding_specific_api_key_takes_precedence():
+    os.environ["PROVIDER"] = "xfyun-coding"
+    os.environ["API_KEY"] = "generic-key"
+    os.environ["SPARK_API_KEY"] = "spark-key"
+    reload(config_module)
+    settings = config_module.load_settings()
+    config_module.validate_settings(settings)
+
+    assert settings.api_password == "spark-key"
+
+
+def test_coding_uses_generic_api_key_fallback():
     os.environ["PROVIDER"] = "xfyun-coding"
     os.environ["API_KEY"] = "generic-key"
     reload(config_module)
@@ -275,7 +286,18 @@ def test_coding_uses_generic_api_key():
     assert settings.api_password == "generic-key"
 
 
-def test_volcengine_uses_generic_api_key():
+def test_volcengine_specific_api_key_takes_precedence():
+    os.environ["PROVIDER"] = "volcengine-coding"
+    os.environ["API_KEY"] = "generic-key"
+    os.environ["VOLCENGINE_API_KEY"] = "volc-key"
+    reload(config_module)
+    settings = config_module.load_settings()
+    config_module.validate_settings(settings)
+
+    assert settings.api_password == "volc-key"
+
+
+def test_volcengine_uses_generic_api_key_fallback():
     os.environ["PROVIDER"] = "volcengine-coding"
     os.environ["API_KEY"] = "generic-key"
     reload(config_module)
@@ -289,7 +311,7 @@ def test_coding_missing_key():
     os.environ["SPARK_MODE"] = "coding"
     reload(config_module)
     settings = config_module.load_settings()
-    with pytest.raises(RuntimeError, match="SPARK_API_PASSWORD"):
+    with pytest.raises(RuntimeError, match="SPARK_API_KEY"):
         config_module.validate_settings(settings)
 
 
@@ -309,7 +331,7 @@ def test_deprecated_spark_mode_websocket_raises():
 
 def test_client_factory():
     os.environ["SPARK_MODE"] = "coding"
-    os.environ["SPARK_API_PASSWORD"] = "key"
+    os.environ["SPARK_API_KEY"] = "key"
     reload(config_module)
     reload(api_client_module)
     settings = config_module.load_settings()

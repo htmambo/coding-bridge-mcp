@@ -34,25 +34,25 @@ from coding_bridge_mcp import config as config_module
 pytestmark = pytest.mark.volcengine_live
 
 
-def _load_ark_key() -> str:
-    """Resolve the Ark API key from the environment or a project ``.env``.
+def _load_volcengine_key() -> str:
+    """Resolve the Volcano Engine API key from the environment or ``.env``.
 
-    Order matches the volcengine-coding credential fallback: ``API_KEY`` →
-    ``VOLCENGINE_API_KEY`` → ``ARK_API_KEY``. ``load_dotenv(override=False)``
-    fills missing keys from ``.env`` (same behaviour as ``server.py``) so a
-    project-local key works without exporting it to the shell.
+    Order matches the volcengine-coding credential fallback: ``VOLCENGINE_API_KEY`` →
+    ``API_KEY``. ``load_dotenv(override=False)`` fills missing keys
+    from ``.env`` (same behaviour as ``server.py``) so a project-local key
+    works without exporting it to the shell.
 
     Raises ``pytest.skip`` when no key is configured — the live test is opt-in
     by marker, and running it without credentials would only produce a 401.
     """
     load_dotenv(override=False)
-    for name in ("API_KEY", "VOLCENGINE_API_KEY", "ARK_API_KEY"):
+    for name in ("VOLCENGINE_API_KEY", "API_KEY"):
         value = os.environ.get(name, "").strip()
         if value:
             return value
     pytest.skip(
-        "volcengine_live requires one of API_KEY / VOLCENGINE_API_KEY / "
-        "ARK_API_KEY in the environment or .env"
+        "volcengine_live requires API_KEY or VOLCENGINE_API_KEY "
+        "in the environment or .env"
     )
 
 
@@ -95,20 +95,19 @@ def _maybe_verbose(verbose: bool, payload: dict) -> None:
 
 def _build_volc_settings(monkeypatch):
     """Reload config + api_client modules with PROVIDER=volcengine-coding."""
-    for key in [
+    resolved_key = _load_volcengine_key()  # resolves from live env first; may pytest.skip
+    for env_key in [
         "PROVIDER",
         "API_KEY",
         "VOLCENGINE_API_KEY",
-        "ARK_API_KEY",
         "SPARK_MODE",
-        "SPARK_API_PASSWORD",
         "SPARK_API_KEY",
     ]:
-        monkeypatch.delenv(key, raising=False)
+        monkeypatch.delenv(env_key, raising=False)
     monkeypatch.setenv("PROVIDER", "volcengine-coding")
-    # Read the Ark key from the environment (never hardcode it in source).
-    # _load_ark_key() skips the test when no key is configured.
-    monkeypatch.setenv("API_KEY", _load_ark_key())
+    # Inject the resolved value through the Provider-specific variable so the
+    # live path also exercises its highest-priority credential.
+    monkeypatch.setenv("VOLCENGINE_API_KEY", resolved_key)
     reload(config_module)
     reload(api_client_module)
     settings = config_module.load_settings()

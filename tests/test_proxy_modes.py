@@ -27,7 +27,7 @@ from coding_bridge_mcp.api_client import _build_client_kwargs, HttpApiClient
 def clean_env(monkeypatch: pytest.MonkeyPatch) -> None:
     for key in [
         "PROVIDER", "SPARK_MODE",
-        "API_KEY", "SPARK_API_PASSWORD",
+        "API_KEY", "SPARK_API_KEY",
         "PROXY",
         "HTTP_PROXY_HOST", "HTTP_PROXY_PORT",
         "HTTP_PROXY_USER", "HTTP_PROXY_PASSWORD",

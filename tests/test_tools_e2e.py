@@ -278,7 +278,6 @@ def fake_client(monkeypatch: pytest.MonkeyPatch):
     Yields the FakeClient so tests can read messages_seen / set next_response.
     """
     monkeypatch.setenv("SPARK_MODE", "coding")
-    monkeypatch.setenv("SPARK_API_PASSWORD", "fake-key")
     monkeypatch.setenv("API_KEY", "fake-key")
     monkeypatch.setenv("MCP_MAX_CONTEXT_CHARS", "200000")  # don't trim the 100-line sample
     monkeypatch.setenv("MCP_MAX_MESSAGES", "40")

@@ -50,7 +50,7 @@ HttpApiClient = api_client_module.HttpApiClient
 def _clean_env(monkeypatch: pytest.MonkeyPatch) -> None:
     for key in [
         "PROVIDER", "SPARK_MODE",
-        "API_KEY", "SPARK_API_PASSWORD", "SPARK_API_KEY",
+        "API_KEY", "SPARK_API_KEY",
         "SENSENOVA_API_KEY", "SENSENOVA_API_URL", "SENSENOVA_MODEL",
         "MCP_MAX_CONTEXT_CHARS", "MCP_MAX_TOKENS",
     ]:
@@ -66,7 +66,7 @@ def test_sensenova_provider_profile_loaded() -> None:
     assert profile.mode == "http"
     assert profile.default_api_url == "https://token.sensenova.cn/v1/chat/completions"
     assert profile.default_model == "deepseek-v4-flash"
-    assert profile.api_key_env_vars == ["API_KEY", "SENSENOVA_API_KEY"]
+    assert profile.api_key_env_vars == ["SENSENOVA_API_KEY", "API_KEY"]
     assert profile.api_url_env_vars == ["SENSENOVA_API_URL"]
     assert profile.model_env_vars == ["SENSENOVA_MODEL"]
 

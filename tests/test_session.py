@@ -11,7 +11,7 @@ from coding_bridge_mcp import server as server_module
 def small_settings(monkeypatch):
     """Reload server with a tiny context limit for trimming tests."""
     monkeypatch.setenv("SPARK_MODE", "coding")
-    monkeypatch.setenv("SPARK_API_PASSWORD", "key")
+    monkeypatch.setenv("SPARK_API_KEY", "key")
     monkeypatch.setenv("SPARK_MAX_CONTEXT_CHARS", "100")
     monkeypatch.setenv("SPARK_MAX_MESSAGES", "10")
     reload(server_module)

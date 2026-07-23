@@ -47,7 +47,7 @@
 | Provider 名 | `opencode-go` | 贴合品牌（文档模型 ID 前缀即 `opencode-go/<model>`）；非传统 Coding Plan 套餐，不套 `-coding` 后缀 |
 | 默认端点 | `https://opencode.ai/zen/go/v1/chat/completions` | 文档实读 |
 | 默认模型 | `glm-5.2` | 用户指定 + 文档实读确认 |
-| 凭证入口 | `API_KEY` → `OPENCODE_API_KEY` 回退 | 与 `qianfan-coding` 体验一致 |
+| 凭证入口 | `OPENCODE_API_KEY` → `API_KEY` 回退 | 与 `qianfan-coding` 体验一致 |
 | 端点覆盖变量 | `OPENCODE_API_URL` | 与 `QIANFAN_API_URL` 对齐 |
 | 模型覆盖变量 | `OPENCODE_MODEL` | 与 `QIANFAN_MODEL` 对齐 |
 | 上下文窗口默认值 | `96000` | 文档未给出 GLM-5.2 精确上下文长度；取保守中间值，README 注明可由 `MCP_MAX_CONTEXT_CHARS` 覆盖 |
@@ -95,7 +95,7 @@
 ## 4. 验收标准
 
 - `PROVIDER=opencode-go` + `API_KEY=<key>` 时，`load_settings()` 不抛异常、`validate_settings()` 通过；
-- `tests/test_config.py` 新单测全部通过（含「同时设置 `API_KEY` 与 `OPENCODE_API_KEY` 时取前者」的优先级断言）；
+- `tests/test_config.py` 新单测全部通过（含专用凭证优先于通用凭证的优先级断言）；
 - `tests/test_opencode_contracts.py` 契约 mock 测试通过（URL / Authorization 头 / payload / 200 usage 解析 / 4xx 错误透传 / usage 缺失兜底）；
 - `uv run pytest` 全套测试（默认配置）全绿；
 - `uv run ruff check` 无新告警；
@@ -110,13 +110,13 @@
 
 ## 4.2 凭证回退顺序语义（first-match-wins）
 
-`api_key_env_vars=["API_KEY", "OPENCODE_API_KEY"]` 表示**按顺序取第一个非空值**（语义由 `config._env` 实现）：
+`api_key_env_vars=["OPENCODE_API_KEY", "API_KEY"]` 表示**按顺序取第一个非空值**（语义由 `config._env` 实现）：
 
 - 仅 `API_KEY` → 用 `API_KEY`
 - 仅 `OPENCODE_API_KEY` → 用 `OPENCODE_API_KEY`
-- 两者都设 → 取 `API_KEY`（更靠前）
+- 两者都设 → 取 `OPENCODE_API_KEY`（更靠前）
 
-将新增一条测试 `test_opencode_api_key_takes_precedence_over_specific` 锁定该行为。
+将新增一条测试锁定专用凭证优先于通用凭证的行为。
 
 ---
 
@@ -144,7 +144,7 @@ OPENCODE_GO = ProviderProfile(
     default_model="glm-5.2",
     default_max_context_chars=96_000,
     default_max_tokens=8_192,
-    api_key_env_vars=["API_KEY", "OPENCODE_API_KEY"],
+    api_key_env_vars=["OPENCODE_API_KEY", "API_KEY"],
     api_url_env_vars=["OPENCODE_API_URL"],
     model_env_vars=["OPENCODE_MODEL"],
 )
@@ -223,7 +223,7 @@ def test_opencode_api_key_takes_precedence_over_specific():
 | 意见 | 审查建议 | 主助判断 | 处置 |
 |---|---|---|---|
 | P0 鉴权推断 | 暂停、先抓包验证后编码 | 技术事实成立（确为推断）；但"暂停"与用户明确指令冲突（用户已知情推断、选择直接落地） | **不采纳暂停**；采纳 experimental 标签 + 契约测试诚实注释 |
-| P1 优先级 | 改 `["OPENCODE_API_KEY","API_KEY"]` 专有优先 | **审查有误**：本项目刻意设计 `API_KEY` 为单一入口优先（README 明文推荐），现有 4 个 http provider 全用 `["API_KEY", ...]`，且 `test_qianfan_api_key_takes_precedence_over_specific` 锁定此语义。opencode 反成会破坏项目一致性 | **保持 `["API_KEY","OPENCODE_API_KEY"]`** |
+| P1 优先级 | 改 `["OPENCODE_API_KEY","API_KEY"]` 专有优先 | 已按当前统一规则采用专用凭证优先，通用 `API_KEY` 作为兜底 | **采用 `["OPENCODE_API_KEY","API_KEY"]`** |
 | P2 上下文 | 改 32000 更保守 | GLM 实际通常 128k+，32000 反而误导；qianfan 即用 96000 + 可覆盖 | **保持 96000** + README 标注需校准 |
 | P3 命名 | 加 -coding 后缀统一 | opencode-go 非 Coding Plan 套餐；文档模型 ID 前缀即 `opencode-go/<model>` | **保留 opencode-go** |
 

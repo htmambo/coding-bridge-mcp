@@ -11,7 +11,7 @@ from coding_bridge_mcp import server as server_module
 def fresh_server(monkeypatch):
     """Reload server with clean session/state dictionaries."""
     monkeypatch.setenv("SPARK_MODE", "coding")
-    monkeypatch.setenv("SPARK_API_PASSWORD", "key")
+    monkeypatch.setenv("SPARK_API_KEY", "key")
     reload(server_module)
     # Reset module-level state in case other tests touched it.
     server_module._sessions.clear()

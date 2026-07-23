@@ -76,22 +76,14 @@ _MODEL_NOT_SUPPORTED_RE = re.compile(
 def _load_sensenova_key() -> str:
     """Resolve the SenseNova API key from the environment or a project ``.env``.
 
-    Order matches the sensenova credential fallback: ``API_KEY`` →
-    ``SENSENOVA_API_KEY``. We read the *live* environment **before** touching
-    ``.env`` so an explicitly-exported ``API_KEY`` (e.g. on the pytest command
-    line) wins over any unrelated key a project ``.env`` happens to carry —
-    otherwise ``load_dotenv(override=False)`` would silently substitute a key
-    for a different provider and the test would 401 against sensenova.
+    Order matches the sensenova credential fallback: ``SENSENOVA_API_KEY`` →
+    ``API_KEY`` after loading ``.env`` with ``override=False``.
 
     Raises ``pytest.skip`` when no key is configured — the live test is opt-in
     by marker, and running it without credentials would only produce a 401.
     """
-    for name in ("API_KEY", "SENSENOVA_API_KEY"):
-        value = os.environ.get(name, "").strip()
-        if value:
-            return value
     load_dotenv(override=False)
-    for name in ("API_KEY", "SENSENOVA_API_KEY"):
+    for name in ("SENSENOVA_API_KEY", "API_KEY"):
         value = os.environ.get(name, "").strip()
         if value:
             return value
@@ -132,10 +124,8 @@ def _maybe_verbose(verbose: bool, payload: dict) -> None:
 def _build_sensenova_settings(monkeypatch):
     """Reload config + api_client modules with PROVIDER=sensenova and glm-5.2.
 
-    The key is resolved **before** any ``monkeypatch.delenv`` so an
-    explicitly-exported ``API_KEY`` (pytest command line) beats any unrelated
-    key a project ``.env`` carries. ``delenv`` would otherwise wipe the live
-    value and let ``load_dotenv`` substitute a different provider's key.
+    The key is resolved before any ``monkeypatch.delenv`` so the merged
+    environment follows the Provider-specific-first priority.
     """
     key = _load_sensenova_key()  # resolves from live env first; may pytest.skip
     for env_key in [
@@ -145,12 +135,11 @@ def _build_sensenova_settings(monkeypatch):
         "SENSENOVA_API_URL",
         "SENSENOVA_MODEL",
         "SPARK_MODE",
-        "SPARK_API_PASSWORD",
         "SPARK_API_KEY",
     ]:
         monkeypatch.delenv(env_key, raising=False)
     monkeypatch.setenv("PROVIDER", "sensenova")
-    monkeypatch.setenv("API_KEY", key)
+    monkeypatch.setenv("SENSENOVA_API_KEY", key)
     # glm-5.2 is the model name we want the upstream to see; it is NOT the
     # sensenova default (deepseek-v4-flash). Override via SENSENOVA_MODEL.
     monkeypatch.setenv("SENSENOVA_MODEL", "glm-5.2")

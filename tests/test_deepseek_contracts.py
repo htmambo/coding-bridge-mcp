@@ -54,7 +54,7 @@ HttpApiClient = api_client_module.HttpApiClient
 def _clean_env(monkeypatch: pytest.MonkeyPatch) -> None:
     for key in [
         "PROVIDER", "SPARK_MODE",
-        "API_KEY", "SPARK_API_PASSWORD", "SPARK_API_KEY",
+        "API_KEY", "SPARK_API_KEY",
         "DEEPSEEK_API_KEY", "DEEPSEEK_API_URL", "DEEPSEEK_MODEL",
         "MCP_MAX_CONTEXT_CHARS", "MCP_MAX_TOKENS",
     ]:
@@ -70,7 +70,7 @@ def test_deepseek_provider_profile_loaded() -> None:
     assert profile.mode == "http"
     assert profile.default_api_url == "https://api.deepseek.com/chat/completions"
     assert profile.default_model == "deepseek-v4-pro"
-    assert profile.api_key_env_vars == ["API_KEY", "DEEPSEEK_API_KEY"]
+    assert profile.api_key_env_vars == ["DEEPSEEK_API_KEY", "API_KEY"]
     assert profile.api_url_env_vars == ["DEEPSEEK_API_URL"]
     assert profile.model_env_vars == ["DEEPSEEK_MODEL"]
 

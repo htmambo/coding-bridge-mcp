@@ -34,7 +34,7 @@
 | 默认模型 | `deepseek-v4-pro` | 用户指定（思考模式，审查质量更高） |
 | 可选模型 | `deepseek-v4-flash` | 更快更省 token，经 `DEEPSEEK_MODEL` 切换 |
 | 废弃模型 | `deepseek-chat` / `deepseek-reasoner` | 2026-07-24 废弃，分别对应 v4-flash 非思考 / 思考模式 |
-| 凭证入口 | `API_KEY` → `DEEPSEEK_API_KEY` 回退 | 与其他 Provider 体验一致 |
+| 凭证入口 | `DEEPSEEK_API_KEY` → `API_KEY` 回退 | 与其他 Provider 体验一致 |
 | 端点覆盖变量 | `DEEPSEEK_API_URL` | 与 `SENSENOVA_API_URL` 对齐 |
 | 模型覆盖变量 | `DEEPSEEK_MODEL` | 与 `SENSENOVA_MODEL` 对齐 |
 | 上下文窗口默认值 | `96000` 字符 | 保守估计，可由 `MCP_MAX_CONTEXT_CHARS` 覆盖 |

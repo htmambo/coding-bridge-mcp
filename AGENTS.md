@@ -12,6 +12,8 @@
   - `cd`：当前项目根目录
   - `CONTEXT`：项目背景、约束、目标（可选但推荐）
   - `SESSION_ID`：空字符串开始新会话；如需追问则沿用返回的 ID
+  - `model`：模型版本（可选，留空用 provider 默认模型）
+  - `return_all_messages`：返回完整消息历史（可选，默认 false，调试用）
 
 ## 2. 代码审查（完成修改后）
 
@@ -23,6 +25,8 @@
   - `cd`：当前项目根目录
   - `REQUIREMENTS`：额外上下文，例如修改原因、边界情况、需要重点关注的点
   - `SESSION_ID`：空字符串开始新会话；如需追问则沿用返回的 ID
+  - `model`：模型版本（可选，留空用 provider 默认模型）
+  - `return_all_messages`：返回完整消息历史（可选，默认 false，调试用）
 
 ## 3. 多轮追问（保存 SESSION_ID）
 

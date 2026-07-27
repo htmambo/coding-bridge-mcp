@@ -1,7 +1,7 @@
 # Task Index
 
 ## Active Tasks
-_(none)_
+- 🟡 [MCP 性能与运行稳定性优化](Active/PERFORMANCE_OPTIMIZATION_PLAN.md) - Proposed
 
 ## Completed Tasks (Archive)
 

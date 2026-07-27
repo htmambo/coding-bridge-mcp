@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 import asyncio
+import time
+from contextlib import asynccontextmanager
 import uuid
+from collections.abc import AsyncIterator
 from pathlib import Path
 from typing import Annotated, Any, Dict, List
 
@@ -21,7 +24,14 @@ from coding_bridge_mcp.logging_config import configure_logging, get_logger
 configure_logging()
 logger = get_logger(__name__)
 
-mcp = FastMCP("Coding Bridge MCP Server")
+
+@asynccontextmanager
+async def _mcp_lifespan(_server: FastMCP) -> AsyncIterator[None]:
+    """Release the shared upstream client when the MCP transport exits."""
+    try:
+        yield
+    finally:
+        await _close_client()
 
 DEFAULT_SYSTEM_PROMPT = (
     "你是一个专业、简洁的 AI 编程助手。请根据用户的问题给出清晰、准确的回答，"
@@ -79,9 +89,14 @@ _client_lock = asyncio.Lock()
 # or the production initialization path.
 _client_factory = create_client
 
+mcp = FastMCP("Coding Bridge MCP Server", lifespan=_mcp_lifespan)
+
 # In-memory session store: session_id -> list of messages
 _sessions: Dict[str, List[Dict[str, str]]] = {}
 _sessions_lock = asyncio.Lock()
+_session_locks: Dict[str, asyncio.Lock] = {}
+_session_last_access: Dict[str, float] = {}
+_session_users: Dict[str, int] = {}
 
 # Per-session cumulative token usage: session_id -> usage dict.
 # Updated after every successful API call. Read by the ``get_token_stats``
@@ -101,14 +116,87 @@ def _empty_stats() -> Dict[str, int]:
     return {field: 0 for field in _SESSION_STATS_FIELDS}
 
 
+def _setting(name: str, fallback: Any) -> Any:
+    """Read a runtime setting while keeping import-time config fallback safe."""
+    return getattr(_settings, name, fallback) if _settings is not None else fallback
+
+
+def _remove_session_locked(session_id: str) -> None:
+    _sessions.pop(session_id, None)
+    _session_stats.pop(session_id, None)
+    _session_locks.pop(session_id, None)
+    _session_last_access.pop(session_id, None)
+    _session_users.pop(session_id, None)
+
+
+def _purge_sessions_locked(now: float | None = None) -> None:
+    """Evict idle or excess sessions; caller must hold ``_sessions_lock``."""
+    now = time.monotonic() if now is None else now
+    ttl = float(_setting("session_ttl_seconds", 3600.0))
+    max_sessions = int(_setting("max_sessions", 1000))
+    session_ids = set(_sessions) | set(_session_stats) | set(_session_last_access)
+
+    for session_id in session_ids:
+        lock = _session_locks.get(session_id)
+        if _session_users.get(session_id, 0) or (lock is not None and lock.locked()):
+            continue
+        last_access = _session_last_access.get(session_id, now)
+        if now - last_access >= ttl:
+            _remove_session_locked(session_id)
+
+    session_ids = set(_sessions) | set(_session_stats) | set(_session_last_access)
+    if len(session_ids) <= max_sessions:
+        return
+    candidates = sorted(
+        (
+            _session_last_access.get(session_id, 0.0),
+            session_id,
+        )
+        for session_id in session_ids
+        if not _session_users.get(session_id, 0)
+        and not (_session_locks.get(session_id) and _session_locks[session_id].locked())
+    )
+    excess = len(session_ids) - max_sessions
+    for _, session_id in candidates[:excess]:
+        _remove_session_locked(session_id)
+
+
+def _touch_session_locked(session_id: str, now: float | None = None) -> None:
+    _session_last_access[session_id] = time.monotonic() if now is None else now
+
+
+def _bounded_history(messages: List[Dict[str, str]]) -> List[Dict[str, str]]:
+    """Return a bounded copy for optional debugging responses."""
+    limit = int(_setting("max_history_response_chars", 262_144))
+    bounded = [dict(message) for message in messages]
+    while len(bounded) > 1 and sum(len(m.get("content", "")) for m in bounded) > limit:
+        bounded.pop(1)
+    total = sum(len(m.get("content", "")) for m in bounded)
+    if total <= limit or not bounded:
+        return bounded
+    first = bounded[0]
+    system_content = first.get("content", "")
+    if len(system_content) >= limit:
+        first["content"] = system_content[:limit]
+        return bounded[:1]
+    if len(bounded) > 1:
+        latest = bounded[-1]
+        available = limit - len(system_content)
+        latest["content"] = latest.get("content", "")[:available]
+    return bounded
+
+
 async def _accumulate_stats(session_id: str, usage: Dict[str, Any] | None) -> None:
     """Add this turn's usage onto the per-session cumulative totals."""
     if not usage:
         return
     async with _sessions_lock:
+        _purge_sessions_locked()
         stats = _session_stats.setdefault(session_id, _empty_stats())
         for field in _SESSION_STATS_FIELDS:
             stats[field] += int(usage.get(field) or 0)
+        _touch_session_locked(session_id)
+        _purge_sessions_locked()
 
 
 async def _ensure_client() -> tuple[ApiClient | None, str | None]:
@@ -143,6 +231,20 @@ async def _ensure_client() -> tuple[ApiClient | None, str | None]:
         return _client, None
 
 
+async def _close_client() -> None:
+    """Close and clear the shared client during transport shutdown or tests."""
+    global _client
+    async with _client_lock:
+        client = _client
+        _client = None
+    if client is None:
+        return
+    try:
+        await client.aclose()
+    except Exception as exc:  # pragma: no cover - shutdown best effort
+        logger.warning("client_close_failed", error=str(exc))
+
+
 def _default_model() -> str:
     if _settings is not None:
         return _settings.default_model
@@ -165,11 +267,11 @@ def _trim_messages(messages: List[Dict[str, str]]) -> List[Dict[str, str]]:
     if not messages:
         return messages
 
-    max_chars = _settings.max_context_chars if _settings else 96000
-    max_msgs = _settings.max_messages if _settings else 40
+    max_chars = int(_setting("max_context_chars", 96000))
+    max_msgs = int(_setting("max_messages", 40))
 
     system_msgs: List[Dict[str, str]] = []
-    rest: List[Dict[str, str]] = messages[:]
+    rest: List[Dict[str, str]] = [dict(message) for message in messages]
     if rest and rest[0].get("role") == "system":
         system_msgs.append(rest.pop(0))
 
@@ -181,6 +283,19 @@ def _trim_messages(messages: List[Dict[str, str]]) -> List[Dict[str, str]]:
         removed = rest.pop(0)
         total_chars -= len(removed.get("content", ""))
 
+    # A single oversized message must not bypass the context budget.
+    if total_chars > max_chars:
+        if system_msgs:
+            system_content = system_msgs[0].get("content", "")
+            if len(system_content) >= max_chars:
+                system_msgs[0]["content"] = system_content[:max_chars]
+                return system_msgs
+            available = max_chars - len(system_content)
+        else:
+            available = max_chars
+        if rest:
+            rest[-1]["content"] = rest[-1].get("content", "")[:available]
+
     return system_msgs + rest
 
 
@@ -189,9 +304,53 @@ async def _get_or_create_session(
     system_prompt: str,
 ) -> List[Dict[str, str]]:
     async with _sessions_lock:
+        _purge_sessions_locked()
         if session_id not in _sessions:
             _sessions[session_id] = [{"role": "system", "content": system_prompt}]
+            _session_locks[session_id] = asyncio.Lock()
+        _touch_session_locked(session_id)
+        _purge_sessions_locked()
         return _sessions[session_id]
+
+
+async def _get_session_lock(session_id: str) -> asyncio.Lock:
+    async with _sessions_lock:
+        lock = _session_locks.get(session_id)
+        if lock is None:
+            lock = asyncio.Lock()
+            _session_locks[session_id] = lock
+        _touch_session_locked(session_id)
+        return lock
+
+
+@asynccontextmanager
+async def _session_turn(
+    session_id: str,
+    system_prompt: str,
+) -> AsyncIterator[None]:
+    """Serialize a complete turn for one session without blocking other sessions."""
+    async with _sessions_lock:
+        _purge_sessions_locked()
+        if session_id not in _sessions:
+            _sessions[session_id] = [{"role": "system", "content": system_prompt}]
+        lock = _session_locks.setdefault(session_id, asyncio.Lock())
+        _session_users[session_id] = _session_users.get(session_id, 0) + 1
+        _touch_session_locked(session_id)
+        _purge_sessions_locked()
+
+    await lock.acquire()
+    try:
+        yield
+    finally:
+        lock.release()
+        async with _sessions_lock:
+            users = _session_users.get(session_id, 1) - 1
+            if users > 0:
+                _session_users[session_id] = users
+            else:
+                _session_users.pop(session_id, None)
+            _touch_session_locked(session_id)
+            _purge_sessions_locked()
 
 
 async def _append_message(
@@ -205,6 +364,7 @@ async def _append_message(
             return
         messages.append({"role": role, "content": content})
         _sessions[session_id] = _trim_messages(messages)
+        _touch_session_locked(session_id)
 
 
 async def _execute(
@@ -216,43 +376,64 @@ async def _execute(
     return_all_messages: bool = False,
 ) -> Dict[str, Any]:
     """Shared helper: manage session, call provider API, format response."""
+    max_message_chars = int(_setting("max_message_chars", 96000))
+    if len(user_content) > max_message_chars:
+        logger.warning(
+            "api_call_rejected_oversized_input",
+            session_id=session_id,
+            input_chars=len(user_content),
+            max_message_chars=max_message_chars,
+        )
+        return {
+            "success": False,
+            "error": (
+                f"Input is too large ({len(user_content)} chars); "
+                f"maximum is {max_message_chars}."
+            ),
+        }
+
     client, err = await _ensure_client()
     if client is None or err:
         logger.error("api_call_failed", session_id=session_id, error=err)
         return {"success": False, "error": err or "API client unavailable"}
 
-    messages = await _get_or_create_session(session_id, system_prompt)
-    await _append_message(session_id, "user", user_content)
-
-    logger.debug("api_request", session_id=session_id, model=model)
-    try:
-        content, usage = await client.call(messages, model, temperature)
-    except ApiError as exc:
-        logger.error("api_error", session_id=session_id, model=model, error=str(exc))
-        return {
-            "success": False,
-            "error": str(exc),
-            "all_messages": messages if return_all_messages else None,
-        }
-
-    await _append_message(session_id, "assistant", content)
-    await _accumulate_stats(session_id, usage)
-    logger.info("api_response", session_id=session_id, model=model, has_usage=usage is not None)
-
-    response: Dict[str, Any] = {
-        "success": True,
-        "SESSION_ID": session_id,
-        "agent_messages": content,
-    }
-    if usage:
-        response["usage"] = usage
-    async with _sessions_lock:
-        cumulative = dict(_session_stats.get(session_id, _empty_stats()))
-    response["cumulative_usage"] = cumulative
-    if return_all_messages:
+    async with _session_turn(session_id, system_prompt):
+        await _append_message(session_id, "user", user_content)
         async with _sessions_lock:
-            response["all_messages"] = _sessions.get(session_id, [])
-    return response
+            messages = list(_sessions.get(session_id, []))
+            _touch_session_locked(session_id)
+
+        logger.debug("api_request", session_id=session_id, model=model)
+        try:
+            content, usage = await client.call(messages, model, temperature)
+        except ApiError as exc:
+            logger.error("api_error", session_id=session_id, model=model, error=str(exc))
+            response: Dict[str, Any] = {
+                "success": False,
+                "error": str(exc),
+            }
+            if return_all_messages:
+                response["all_messages"] = _bounded_history(messages)
+            return response
+
+        await _append_message(session_id, "assistant", content)
+        await _accumulate_stats(session_id, usage)
+        logger.info("api_response", session_id=session_id, model=model, has_usage=usage is not None)
+
+        response = {
+            "success": True,
+            "SESSION_ID": session_id,
+            "agent_messages": content,
+        }
+        if usage:
+            response["usage"] = usage
+        async with _sessions_lock:
+            cumulative = dict(_session_stats.get(session_id, _empty_stats()))
+            response_messages = list(_sessions.get(session_id, []))
+        response["cumulative_usage"] = cumulative
+        if return_all_messages:
+            response["all_messages"] = _bounded_history(response_messages)
+        return response
 
 
 @mcp.tool(
@@ -440,6 +621,7 @@ async def get_token_stats(
         return {"success": False, "error": err}
 
     async with _sessions_lock:
+        _purge_sessions_locked()
         if SESSION_ID:
             if SESSION_ID not in _session_stats:
                 return {

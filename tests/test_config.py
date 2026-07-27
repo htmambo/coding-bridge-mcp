@@ -38,6 +38,17 @@ def clean_env(monkeypatch):
         "DEEPSEEK_MODEL",
         "MCP_MAX_CONTEXT_CHARS",
         "MCP_MAX_TOKENS",
+        "MCP_TIMEOUT_SECONDS",
+        "MCP_MAX_MESSAGES",
+        "MCP_MAX_CONNECTIONS",
+        "MCP_MAX_KEEPALIVE_CONNECTIONS",
+        "MCP_CONNECT_TIMEOUT_SECONDS",
+        "MCP_WRITE_TIMEOUT_SECONDS",
+        "MCP_POOL_TIMEOUT_SECONDS",
+        "MCP_SESSION_TTL_SECONDS",
+        "MCP_MAX_SESSIONS",
+        "MCP_MAX_MESSAGE_CHARS",
+        "MCP_MAX_HISTORY_RESPONSE_CHARS",
     ]:
         monkeypatch.delenv(key, raising=False)
 
@@ -64,6 +75,44 @@ def test_coding_defaults():
     assert settings.max_context_chars == 1_048_576
     assert settings.max_tokens == 8192
     assert settings.api_password == "key"
+    assert settings.max_connections == 20
+    assert settings.max_keepalive_connections == 10
+    assert settings.connect_timeout_seconds == 10.0
+    assert settings.session_ttl_seconds == 3600.0
+    assert settings.max_sessions == 1000
+    assert settings.max_message_chars == settings.max_context_chars
+
+
+def test_runtime_limits_can_be_overridden(monkeypatch):
+    monkeypatch.setenv("PROVIDER", "xfyun-coding")
+    monkeypatch.setenv("SPARK_API_KEY", "key")
+    monkeypatch.setenv("MCP_MAX_CONNECTIONS", "8")
+    monkeypatch.setenv("MCP_MAX_KEEPALIVE_CONNECTIONS", "4")
+    monkeypatch.setenv("MCP_CONNECT_TIMEOUT_SECONDS", "2.5")
+    monkeypatch.setenv("MCP_SESSION_TTL_SECONDS", "60")
+    monkeypatch.setenv("MCP_MAX_MESSAGE_CHARS", "5000")
+    reload(config_module)
+
+    settings = config_module.load_settings()
+    config_module.validate_settings(settings)
+
+    assert settings.max_connections == 8
+    assert settings.max_keepalive_connections == 4
+    assert settings.connect_timeout_seconds == 2.5
+    assert settings.session_ttl_seconds == 60.0
+    assert settings.max_message_chars == 5000
+
+
+def test_runtime_limits_reject_invalid_values(monkeypatch):
+    monkeypatch.setenv("PROVIDER", "xfyun-coding")
+    monkeypatch.setenv("SPARK_API_KEY", "key")
+    monkeypatch.setenv("MCP_MAX_KEEPALIVE_CONNECTIONS", "21")
+    monkeypatch.setenv("MCP_MAX_CONNECTIONS", "20")
+    reload(config_module)
+
+    settings = config_module.load_settings()
+    with pytest.raises(ValueError, match="max_keepalive_connections"):
+        config_module.validate_settings(settings)
 
 
 def test_provider_coding():

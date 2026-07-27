@@ -159,16 +159,22 @@ def test_proxy_custom_rejects_out_of_range_port() -> None:
 def test_kwargs_false_mode_disables_trust_env() -> None:
     s = _make_settings(proxy_mode="false")
     kw = _build_client_kwargs(s)
-    assert kw == {"timeout": 30.0, "trust_env": False}
+    assert isinstance(kw["timeout"], httpx.Timeout)
+    assert kw["timeout"].read == 30.0
+    assert kw["timeout"].connect == 10.0
+    assert kw["limits"].max_connections == 20
+    assert kw["limits"].max_keepalive_connections == 10
+    assert kw["trust_env"] is False
 
 
 def test_kwargs_env_mode_enables_trust_env() -> None:
     s = _make_settings(proxy_mode="env")
     kw = _build_client_kwargs(s)
-    assert kw == {"timeout": 30.0, "trust_env": True}
+    assert kw["trust_env"] is True
+    assert isinstance(kw["timeout"], httpx.Timeout)
 
 
-def test_kwargs_custom_mode_uses_explicit_proxy_dict() -> None:
+def test_kwargs_custom_mode_uses_explicit_proxy_mounts() -> None:
     s = _make_settings(
         proxy_mode="custom",
         proxy_http=config_module.ProxyEndpoint("http", "h.local", 8080),
@@ -176,11 +182,9 @@ def test_kwargs_custom_mode_uses_explicit_proxy_dict() -> None:
     )
     kw = _build_client_kwargs(s)
     assert kw["trust_env"] is False
-    assert isinstance(kw["proxy"], dict)
-    assert "http://" in kw["proxy"]
-    assert "https://" in kw["proxy"]
-    assert isinstance(kw["proxy"]["http://"], httpx.Proxy)
-    assert "h.local:8080" in str(kw["proxy"]["http://"].url)  # type: ignore[attr-defined]
+    assert set(kw["mounts"]) == {"http://", "https://"}
+    assert isinstance(kw["mounts"]["http://"], httpx.AsyncHTTPTransport)
+    assert isinstance(kw["mounts"]["https://"], httpx.AsyncHTTPTransport)
 
 
 # ---------------------------------------------------------------------------
@@ -243,10 +247,9 @@ def test_http_client_custom_mode_propagates(monkeypatch: pytest.MonkeyPatch) -> 
     with _spy_async_client(captured):
         asyncio.run(HttpApiClient(s).call(
             [{"role": "user", "content": "hi"}], model="astron-code-latest"
-        ))
+    ))
     assert captured["kwargs"]["trust_env"] is False
-    proxy = captured["kwargs"]["proxy"]
-    assert isinstance(proxy, dict)
-    assert "http://" in proxy and "https://" in proxy
-    assert "h.local:8080" in str(proxy["http://"].url)  # type: ignore[attr-defined]
-    assert "h.local:8443" in str(proxy["https://"].url)  # type: ignore[attr-defined]
+    mounts = captured["kwargs"]["mounts"]
+    assert set(mounts) == {"http://", "https://"}
+    assert isinstance(mounts["http://"], httpx.AsyncHTTPTransport)
+    assert isinstance(mounts["https://"], httpx.AsyncHTTPTransport)

@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import asyncio
+import random
+import time
 from abc import ABC, abstractmethod
 from typing import Any, Dict, List, Tuple
 from urllib.parse import urlparse
@@ -13,45 +16,153 @@ from coding_bridge_mcp.logging_config import get_logger
 
 logger = get_logger(__name__)
 
+_MAX_ERROR_BODY_CHARS = 4096
+
 
 def _build_client_kwargs(settings: Settings) -> Dict[str, Any]:
     """Return httpx.AsyncClient kwargs derived from settings.proxy_mode.
 
-    | PROXY      | trust_env | proxy                                  |
-    |------------|-----------|----------------------------------------|
-    | false (def)| False     | not set (no env injection, no override)|
-    | true / env | True      | not set                                |
-    | custom     | False     | dict mapping scheme to httpx.Proxy     |
+    | PROXY      | trust_env | proxy transport                         |
+    |------------|-----------|------------------------------------------|
+    | false (def)| False     | not set (no env injection, no override)  |
+    | true / env | True      | not set                                  |
+    | custom     | False     | scheme-specific AsyncHTTPTransport mounts|
 
     Centralising this keeps the call() body free of branching logic and gives
-    tests a single seam to assert on.
+    tests a single seam to assert on. ``httpx>=0.28`` accepts one ``proxy``
+    value, so custom HTTP/HTTPS endpoints use transport mounts instead of a
+    mapping passed to the removed ``proxy`` parameter.
     """
+    timeout = httpx.Timeout(
+        timeout=settings.timeout_seconds,
+        connect=settings.connect_timeout_seconds,
+        read=settings.timeout_seconds,
+        write=settings.write_timeout_seconds,
+        pool=settings.pool_timeout_seconds,
+    )
+    limits = httpx.Limits(
+        max_connections=settings.max_connections,
+        max_keepalive_connections=settings.max_keepalive_connections,
+    )
+    common: Dict[str, Any] = {"timeout": timeout, "limits": limits}
+
     mode = settings.proxy_mode
     if mode == "custom":
-        proxy: Dict[str, httpx.Proxy] = {}
+        mounts: Dict[str, httpx.AsyncBaseTransport] = {}
         if settings.proxy_http is not None:
-            proxy["http://"] = httpx.Proxy(settings.proxy_http.url())
+            mounts["http://"] = httpx.AsyncHTTPTransport(
+                proxy=settings.proxy_http.url()
+            )
         if settings.proxy_https is not None:
-            proxy["https://"] = httpx.Proxy(settings.proxy_https.url())
-        return {
-            "timeout": settings.timeout_seconds,
-            "trust_env": False,
-            "proxy": proxy,
-        }
+            mounts["https://"] = httpx.AsyncHTTPTransport(
+                proxy=settings.proxy_https.url()
+            )
+        return {**common, "trust_env": False, "mounts": mounts}
     if mode in {"true", "env"}:
-        return {
-            "timeout": settings.timeout_seconds,
-            "trust_env": True,
-        }
+        return {**common, "trust_env": True}
     # mode == "false" — default; never honor env, never use proxy override.
-    return {
-        "timeout": settings.timeout_seconds,
-        "trust_env": False,
-    }
+    return {**common, "trust_env": False}
 
 
 class ApiError(Exception):
     """Raised when the API returns an error."""
+
+
+# Keywords in error responses that indicate a retryable rate-limit / throttling
+# condition, even when the HTTP status code is not 429 (e.g. qianfan returns 200
+# with a provider-level error on burst protection).
+_RETRYABLE_ERROR_KEYWORDS = (
+    "request burst",
+    "rate limit",
+    "rate-limit",
+    "too many requests",
+    "quota exceeded",
+    "system protection",
+    "系统保护",
+    "限流",
+    "throttl",
+)
+
+
+def _is_retryable_status(status_code: int) -> bool:
+    """Return True for HTTP status codes we should retry on."""
+    if status_code == 429:
+        return True
+    if 500 <= status_code < 600:
+        return True
+    return False
+
+
+def _body_hints_rate_limit(body: Any) -> bool:
+    """Heuristic: does the response body mention a rate-limit / throttling condition?
+
+    We flatten the whole body to a string and scan for keywords — this is
+    robust against varying field names across providers (``message``,
+    ``error_msg``, ``msg``, ``error.message``, etc.) without needing an
+    exhaustive schema list.
+    """
+    if isinstance(body, str):
+        text = body.lower()
+    elif isinstance(body, dict):
+        # Walk a few levels deep so nested error objects are covered.
+        parts: list[str] = []
+
+        def _walk(obj: Any, depth: int = 0) -> None:
+            if depth > 3:
+                return
+            if isinstance(obj, str):
+                parts.append(obj)
+            elif isinstance(obj, dict):
+                for v in obj.values():
+                    _walk(v, depth + 1)
+            elif isinstance(obj, list):
+                for v in obj:
+                    _walk(v, depth + 1)
+
+        _walk(body)
+        text = " ".join(parts).lower()
+    else:
+        text = str(body).lower()
+    return any(kw in text for kw in _RETRYABLE_ERROR_KEYWORDS)
+
+
+def _extract_retry_after(headers: Dict[str, Any]) -> float | None:
+    """Parse Retry-After header (seconds or HTTP-date) into seconds.
+
+    Returns None when the header is absent or unparseable.
+    """
+    raw = headers.get("retry-after")
+    if raw is None:
+        # httpx lowercases header names by default; try original-case just in case.
+        raw = headers.get("Retry-After")
+    if raw is None:
+        return None
+    try:
+        return max(0.0, float(raw))
+    except (TypeError, ValueError):
+        return None
+
+
+def _compute_backoff_delay(
+    attempt: int,
+    base_delay: float,
+    max_delay: float = 30.0,
+    retry_after: float | None = None,
+) -> float:
+    """Compute exponential backoff delay for the given (0-based) attempt.
+
+    ``attempt`` is 0 for the first retry.  Delay grows as
+    ``base_delay * 2^attempt`` capped at ``max_delay``, plus ±20% jitter.
+    When ``retry_after`` is provided and is larger, it wins (never wait less
+    than the server asked).
+    """
+    exponential = min(base_delay * (2**attempt), max_delay)
+    # ±20% jitter
+    jitter = exponential * random.uniform(-0.2, 0.2)
+    delay = exponential + jitter
+    if retry_after is not None and retry_after > delay:
+        delay = retry_after
+    return max(0.0, delay)
 
 
 def _safe_url(url: str) -> str:
@@ -70,6 +181,14 @@ def _safe_url(url: str) -> str:
     else:
         netloc = host
     return f"{parsed.scheme}://{netloc}{parsed.path or ''}"
+
+
+def _bounded_text(value: Any, limit: int = _MAX_ERROR_BODY_CHARS) -> str:
+    """Return a bounded diagnostic string suitable for errors and logs."""
+    text = value if isinstance(value, str) else repr(value)
+    if len(text) <= limit:
+        return text
+    return f"{text[:limit]}... [truncated {len(text) - limit} chars]"
 
 
 def _normalize_usage(usage: Dict[str, Any] | None) -> Dict[str, Any] | None:
@@ -137,12 +256,34 @@ class ApiClient(ABC):
         """Return (assistant_content, usage_dict_or_none)."""
         raise NotImplementedError
 
+    async def aclose(self) -> None:
+        """Release client resources. Stateless test clients may keep the default no-op."""
+
 
 class HttpApiClient(ApiClient):
     """OpenAI-compatible HTTP client (uses APIPassword / API key)."""
 
     def __init__(self, settings: Settings):
         self.settings = settings
+        self._http_client: httpx.AsyncClient | None = None
+        self._http_client_lock = asyncio.Lock()
+
+    async def _get_http_client(self) -> httpx.AsyncClient:
+        if self._http_client is not None:
+            return self._http_client
+        async with self._http_client_lock:
+            if self._http_client is None:
+                self._http_client = httpx.AsyncClient(
+                    **_build_client_kwargs(self.settings)
+                )
+            return self._http_client
+
+    async def aclose(self) -> None:
+        async with self._http_client_lock:
+            client = self._http_client
+            self._http_client = None
+        if client is not None:
+            await client.aclose()
 
     async def call(
         self,
@@ -150,6 +291,52 @@ class HttpApiClient(ApiClient):
         model: str,
         temperature: float = 1.0,
     ) -> Tuple[str, Dict[str, Any] | None]:
+        max_retries = self.settings.max_retries
+        base_delay = self.settings.retry_base_delay
+
+        last_exc: BaseException | None = None
+        for attempt in range(max_retries + 1):
+            try:
+                return await self._request_once(messages, model, temperature)
+            except ApiError as exc:
+                last_exc = exc
+                if attempt >= max_retries:
+                    raise
+                # Decide if this error is worth retrying.
+                retry_after = getattr(exc, "_retry_after", None)
+                is_retryable = getattr(exc, "_retryable", False)
+                if not is_retryable:
+                    raise
+                delay = _compute_backoff_delay(
+                    attempt, base_delay, retry_after=retry_after
+                )
+                safe_url = _safe_url(self.settings.api_url)
+                logger.warning(
+                    "http_retry",
+                    url=safe_url,
+                    model=model,
+                    attempt=attempt + 1,
+                    max_retries=max_retries,
+                    delay_seconds=round(delay, 3),
+                    reason=_bounded_text(str(exc), 200),
+                )
+                await asyncio.sleep(delay)
+        # Should be unreachable — loop either returns or raises.
+        if last_exc is not None:
+            raise last_exc
+        raise ApiError("request failed for an unknown reason")
+
+    async def _request_once(
+        self,
+        messages: List[Dict[str, str]],
+        model: str,
+        temperature: float,
+    ) -> Tuple[str, Dict[str, Any] | None]:
+        """Perform a single HTTP request attempt.
+
+        Raises ``ApiError`` on failure; the ``_retryable`` attribute on the
+        exception tells the caller whether retrying makes sense.
+        """
         payload: Dict[str, Any] = {
             "model": model,
             "messages": messages,
@@ -168,30 +355,57 @@ class HttpApiClient(ApiClient):
             url=safe_url,
             model=model,
             message_count=len(messages),
+            request_chars=sum(len(message.get("content", "")) for message in messages),
         )
         logger.debug("http_request_payload", model=model, max_tokens=self.settings.max_tokens)
 
+        started_at = time.perf_counter()
         try:
-            # Proxy handling per Settings.proxy_mode; see _build_client_kwargs.
-            async with httpx.AsyncClient(**_build_client_kwargs(self.settings)) as client:
-                response = await client.post(
-                    self.settings.api_url, headers=headers, json=payload
-                )
+            client = await self._get_http_client()
+            response = await client.post(
+                self.settings.api_url, headers=headers, json=payload
+            )
         except httpx.TimeoutException as exc:
-            logger.error("http_request_timeout", url=safe_url, model=model)
-            raise ApiError("API request timed out") from exc
+            logger.error(
+                "http_request_timeout",
+                url=safe_url,
+                model=model,
+                elapsed_ms=round((time.perf_counter() - started_at) * 1000, 2),
+            )
+            err = ApiError("API request timed out")
+            err._retryable = True  # type: ignore[attr-defined]
+            raise err from exc
         except httpx.RequestError as exc:
-            logger.error("http_request_failed", url=safe_url, model=model, error=str(exc))
-            raise ApiError(f"API request failed: {exc}") from exc
+            logger.error(
+                "http_request_failed",
+                url=safe_url,
+                model=model,
+                error=_bounded_text(str(exc)),
+                elapsed_ms=round((time.perf_counter() - started_at) * 1000, 2),
+            )
+            err = ApiError(f"API request failed: {exc}")
+            err._retryable = True  # type: ignore[attr-defined]
+            raise err from exc
+
+        elapsed_ms = round((time.perf_counter() - started_at) * 1000, 2)
 
         try:
             data = response.json()
         except Exception as exc:
-            raise ApiError(
-                f"Failed to parse API response: {exc}\nBody: {response.text}"
-            ) from exc
+            err = ApiError(
+                f"Failed to parse API response: {exc}\nBody: {_bounded_text(response.text)}"
+            )
+            err._retryable = False  # type: ignore[attr-defined]
+            raise err from exc
 
-        logger.info("http_response", url=safe_url, model=model, status_code=response.status_code)
+        logger.info(
+            "http_response",
+            url=safe_url,
+            model=model,
+            status_code=response.status_code,
+            elapsed_ms=elapsed_ms,
+            response_bytes=len(response.content),
+        )
 
         if response.status_code != 200:
             detail = data.get("message") if isinstance(data, dict) else None
@@ -204,9 +418,16 @@ class HttpApiClient(ApiClient):
                 status_code=response.status_code,
                 detail=detail,
             )
-            raise ApiError(
-                f"API HTTP {response.status_code}: {detail or response.text or 'unknown error'}"
+            err = ApiError(
+                f"API HTTP {response.status_code}: "
+                f"{_bounded_text(detail or response.text or 'unknown error')}"
             )
+            # Retryable on 429 / 5xx, or when the body hints at rate limiting.
+            retryable = _is_retryable_status(response.status_code) or _body_hints_rate_limit(data)
+            err._retryable = retryable  # type: ignore[attr-defined]
+            if retryable:
+                err._retry_after = _extract_retry_after(dict(response.headers))  # type: ignore[attr-defined]
+            raise err
 
         # Native providers may wrap their own code/message fields on top of the OpenAI shape.
         code = data.get("code", 0)
@@ -216,18 +437,25 @@ class HttpApiClient(ApiClient):
                 url=safe_url,
                 model=model,
                 code=code,
-                message=data.get("message"),
+                error_message=data.get("message"),
             )
-            raise ApiError(
+            err = ApiError(
                 f"API error {code}: {data.get('message')} (sid={data.get('sid')})"
             )
+            # Provider-level errors are retryable when the message hints at
+            # rate limiting / burst protection (e.g. qianfan's "System protection
+            # triggered by request burst").
+            err._retryable = _body_hints_rate_limit(data)  # type: ignore[attr-defined]
+            raise err
 
         try:
             content = data["choices"][0]["message"]["content"]
         except (KeyError, IndexError, TypeError) as exc:
-            raise ApiError(
-                f"Unexpected API response structure: {exc}\nBody: {data}"
-            ) from exc
+            err = ApiError(
+                f"Unexpected API response structure: {exc}\nBody: {_bounded_text(data)}"
+            )
+            err._retryable = False  # type: ignore[attr-defined]
+            raise err from exc
 
         # Thinking-mode models (e.g. deepseek-v4-pro) emit the chain-of-thought
         # in ``reasoning_content`` and the final answer in ``content``. A
@@ -247,9 +475,12 @@ class HttpApiClient(ApiClient):
                 if has_reasoning
                 else ""
             )
-            raise ApiError(
-                f"API returned empty content{hint}\nBody: {data}"
+            err = ApiError(
+                f"API returned empty content{hint}\nBody: {_bounded_text(data)}"
             )
+            # Empty content is usually a max_tokens issue, not a transient error.
+            err._retryable = False  # type: ignore[attr-defined]
+            raise err
 
         usage = _normalize_usage(data.get("usage"))
         return content, usage

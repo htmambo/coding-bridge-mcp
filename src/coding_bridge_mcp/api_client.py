@@ -6,6 +6,8 @@ import asyncio
 import random
 import time
 from abc import ABC, abstractmethod
+from datetime import datetime, timezone
+from email.utils import parsedate_to_datetime
 from typing import Any, Dict, List, Tuple
 from urllib.parse import urlparse
 
@@ -65,7 +67,23 @@ def _build_client_kwargs(settings: Settings) -> Dict[str, Any]:
 
 
 class ApiError(Exception):
-    """Raised when the API returns an error."""
+    """Raised when the API returns an error.
+
+    ``retryable`` tells the retry loop whether another attempt is worthwhile;
+    ``retry_after`` carries the server-provided delay hint (seconds) when the
+    response included a parseable ``Retry-After`` header.
+    """
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        retryable: bool = False,
+        retry_after: float | None = None,
+    ) -> None:
+        super().__init__(message)
+        self.retryable = retryable
+        self.retry_after = retry_after
 
 
 # Keywords in error responses that indicate a retryable rate-limit / throttling
@@ -127,7 +145,7 @@ def _body_hints_rate_limit(body: Any) -> bool:
 
 
 def _extract_retry_after(headers: Dict[str, Any]) -> float | None:
-    """Parse Retry-After header (seconds or HTTP-date) into seconds.
+    """Parse Retry-After header (delay-seconds or HTTP-date) into seconds.
 
     Returns None when the header is absent or unparseable.
     """
@@ -140,7 +158,18 @@ def _extract_retry_after(headers: Dict[str, Any]) -> float | None:
     try:
         return max(0.0, float(raw))
     except (TypeError, ValueError):
+        pass
+    # HTTP-date form (RFC 7231 §7.1.3), e.g. "Wed, 21 Oct 2015 07:28:00 GMT".
+    # Best-effort: any parse failure is treated the same as a missing header.
+    try:
+        retry_at = parsedate_to_datetime(str(raw))
+    except (TypeError, ValueError, OverflowError):
         return None
+    if retry_at is None:  # defensive; parsedate_to_datetime raises on 3.10+
+        return None
+    if retry_at.tzinfo is None:
+        retry_at = retry_at.replace(tzinfo=timezone.utc)
+    return max(0.0, (retry_at - datetime.now(timezone.utc)).total_seconds())
 
 
 def _compute_backoff_delay(
@@ -303,12 +332,10 @@ class HttpApiClient(ApiClient):
                 if attempt >= max_retries:
                     raise
                 # Decide if this error is worth retrying.
-                retry_after = getattr(exc, "_retry_after", None)
-                is_retryable = getattr(exc, "_retryable", False)
-                if not is_retryable:
+                if not exc.retryable:
                     raise
                 delay = _compute_backoff_delay(
-                    attempt, base_delay, retry_after=retry_after
+                    attempt, base_delay, retry_after=exc.retry_after
                 )
                 safe_url = _safe_url(self.settings.api_url)
                 logger.warning(
@@ -334,8 +361,8 @@ class HttpApiClient(ApiClient):
     ) -> Tuple[str, Dict[str, Any] | None]:
         """Perform a single HTTP request attempt.
 
-        Raises ``ApiError`` on failure; the ``_retryable`` attribute on the
-        exception tells the caller whether retrying makes sense.
+        Raises ``ApiError`` on failure; ``ApiError.retryable`` tells the caller
+        whether retrying makes sense.
         """
         payload: Dict[str, Any] = {
             "model": model,
@@ -372,9 +399,7 @@ class HttpApiClient(ApiClient):
                 model=model,
                 elapsed_ms=round((time.perf_counter() - started_at) * 1000, 2),
             )
-            err = ApiError("API request timed out")
-            err._retryable = True  # type: ignore[attr-defined]
-            raise err from exc
+            raise ApiError("API request timed out", retryable=True) from exc
         except httpx.RequestError as exc:
             logger.error(
                 "http_request_failed",
@@ -383,20 +408,16 @@ class HttpApiClient(ApiClient):
                 error=_bounded_text(str(exc)),
                 elapsed_ms=round((time.perf_counter() - started_at) * 1000, 2),
             )
-            err = ApiError(f"API request failed: {exc}")
-            err._retryable = True  # type: ignore[attr-defined]
-            raise err from exc
+            raise ApiError(f"API request failed: {exc}", retryable=True) from exc
 
         elapsed_ms = round((time.perf_counter() - started_at) * 1000, 2)
 
         try:
             data = response.json()
         except Exception as exc:
-            err = ApiError(
+            raise ApiError(
                 f"Failed to parse API response: {exc}\nBody: {_bounded_text(response.text)}"
-            )
-            err._retryable = False  # type: ignore[attr-defined]
-            raise err from exc
+            ) from exc
 
         logger.info(
             "http_response",
@@ -418,16 +439,14 @@ class HttpApiClient(ApiClient):
                 status_code=response.status_code,
                 detail=detail,
             )
-            err = ApiError(
-                f"API HTTP {response.status_code}: "
-                f"{_bounded_text(detail or response.text or 'unknown error')}"
-            )
             # Retryable on 429 / 5xx, or when the body hints at rate limiting.
             retryable = _is_retryable_status(response.status_code) or _body_hints_rate_limit(data)
-            err._retryable = retryable  # type: ignore[attr-defined]
-            if retryable:
-                err._retry_after = _extract_retry_after(dict(response.headers))  # type: ignore[attr-defined]
-            raise err
+            raise ApiError(
+                f"API HTTP {response.status_code}: "
+                f"{_bounded_text(detail or response.text or 'unknown error')}",
+                retryable=retryable,
+                retry_after=_extract_retry_after(dict(response.headers)) if retryable else None,
+            )
 
         # Native providers may wrap their own code/message fields on top of the OpenAI shape.
         code = data.get("code", 0)
@@ -439,23 +458,20 @@ class HttpApiClient(ApiClient):
                 code=code,
                 error_message=data.get("message"),
             )
-            err = ApiError(
-                f"API error {code}: {data.get('message')} (sid={data.get('sid')})"
-            )
             # Provider-level errors are retryable when the message hints at
             # rate limiting / burst protection (e.g. qianfan's "System protection
             # triggered by request burst").
-            err._retryable = _body_hints_rate_limit(data)  # type: ignore[attr-defined]
-            raise err
+            raise ApiError(
+                f"API error {code}: {data.get('message')} (sid={data.get('sid')})",
+                retryable=_body_hints_rate_limit(data),
+            )
 
         try:
             content = data["choices"][0]["message"]["content"]
         except (KeyError, IndexError, TypeError) as exc:
-            err = ApiError(
+            raise ApiError(
                 f"Unexpected API response structure: {exc}\nBody: {_bounded_text(data)}"
-            )
-            err._retryable = False  # type: ignore[attr-defined]
-            raise err from exc
+            ) from exc
 
         # Thinking-mode models (e.g. deepseek-v4-pro) emit the chain-of-thought
         # in ``reasoning_content`` and the final answer in ``content``. A
@@ -475,12 +491,11 @@ class HttpApiClient(ApiClient):
                 if has_reasoning
                 else ""
             )
-            err = ApiError(
+            # Empty content is usually a max_tokens issue, not a transient
+            # error, so ``retryable`` stays False.
+            raise ApiError(
                 f"API returned empty content{hint}\nBody: {_bounded_text(data)}"
             )
-            # Empty content is usually a max_tokens issue, not a transient error.
-            err._retryable = False  # type: ignore[attr-defined]
-            raise err
 
         usage = _normalize_usage(data.get("usage"))
         return content, usage
@@ -488,6 +503,6 @@ class HttpApiClient(ApiClient):
 
 def create_client(settings: Settings) -> ApiClient:
     """Factory: return an HTTP client for the configured provider."""
-    if settings.mode in {"http", "coding"}:
+    if settings.mode == "http":
         return HttpApiClient(settings)
     raise ValueError(f"Unsupported API mode: {settings.mode!r}. Expected 'http'.")

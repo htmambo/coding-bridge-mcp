@@ -372,7 +372,6 @@ async def _execute(
     user_content: str,
     system_prompt: str,
     model: str,
-    temperature: float = 1.0,
     return_all_messages: bool = False,
 ) -> Dict[str, Any]:
     """Shared helper: manage session, call provider API, format response."""
@@ -405,7 +404,7 @@ async def _execute(
 
         logger.debug("api_request", session_id=session_id, model=model)
         try:
-            content, usage = await client.call(messages, model, temperature)
+            content, usage = await client.call(messages, model)
         except ApiError as exc:
             logger.error("api_error", session_id=session_id, model=model, error=str(exc))
             response: Dict[str, Any] = {
@@ -445,7 +444,7 @@ async def _execute(
         "可选参数：SESSION_ID（继续会话）、model（模型版本）、"
         "return_all_messages（返回完整历史）。"
     ),
-    meta={"version": "0.1.0"},
+    meta={"version": "0.2.0"},
 )
 async def chat(
     PROMPT: Annotated[str, "Instruction for the task to send to the model."],
@@ -494,7 +493,7 @@ async def chat(
         "必选参数：CODE（代码文本）、cd（工作目录）。\n"
         "可选参数：REQUIREMENTS（额外要求/上下文）、SESSION_ID、model、return_all_messages。"
     ),
-    meta={"version": "0.1.0"},
+    meta={"version": "0.2.0"},
 )
 async def review_code(
     CODE: Annotated[str, "Source code to review."],
@@ -544,7 +543,7 @@ async def review_code(
         "必选参数：PLAN（计划文本）、cd（工作目录）。\n"
         "可选参数：CONTEXT（项目背景）、SESSION_ID、model、return_all_messages。"
     ),
-    meta={"version": "0.1.0"},
+    meta={"version": "0.2.0"},
 )
 async def review_plan(
     PLAN: Annotated[str, "Plan or proposal text to review."],
@@ -603,7 +602,7 @@ def _aggregate_stats(stats_list: List[Dict[str, int]]) -> Dict[str, int]:
         "必选参数：cd（工作目录）。\n"
         "可选参数：SESSION_ID（指定会话，空字符串或不传则汇总当前进程所有会话）。"
     ),
-    meta={"version": "0.1.0"},
+    meta={"version": "0.2.0"},
 )
 async def get_token_stats(
     cd: Annotated[Path, "Working directory for the stats session."],

@@ -1,10 +1,10 @@
 [build-system]
-requires = ["hatchling>=1.25"]
+requires = ["hatchling>=1.27"]
 build-backend = "hatchling.build"
 
 [project]
 name = "coding-bridge-mcp"
-version = "0.1.0"
+version = "0.2.0"
 description = "Multi-provider Coding Plan MCP server for code/plan review."
 readme = "README.md"
 requires-python = ">=3.12,<3.14"
@@ -17,13 +17,12 @@ dependencies = [
 authors = [
     { name = "coding-bridge-mcp" },
 ]
-license = { text = "MIT" }
+license = "MIT"
 keywords = ["mcp", "coding-plan", "iflytek", "volcengine", "spark", "code-review", "plan-review"]
 classifiers = [
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
-    "License :: OSI Approved :: MIT License",
     "Operating System :: OS Independent",
 ]
 

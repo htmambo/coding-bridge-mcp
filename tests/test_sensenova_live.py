@@ -25,6 +25,13 @@ is confirmed to be served by the Token Plan (verified via
 the model name client-side; it just passes the string through to the
 upstream.
 
+Note on ``max_tokens``: SenseNova workspaces enforce a per-request
+``max_tokens`` cap. On 2026-08-18 the cap was observed to be exactly 4096
+— requests with ``max_tokens <= 4096`` return 200, while ``>= 4097`` are
+rejected with a misleading ``429 Workspace allocated quota exceeded``
+even when the console shows quota remaining. The profile default of 8192
+would hit that wall, so this test pins ``MCP_MAX_TOKENS=4096``.
+
 The only accepted outcome is **200 success** — content + usage returned;
 content non-empty, mentions "2", and ``usage.total_tokens > 0``. Proves
 the Bearer assumption and the OpenAI response shape hold against the real
@@ -116,6 +123,11 @@ def _build_sensenova_settings(monkeypatch):
         monkeypatch.delenv(env_key, raising=False)
     monkeypatch.setenv("PROVIDER", "sensenova")
     monkeypatch.setenv("SENSENOVA_API_KEY", key)
+    # SenseNova workspaces enforce a per-request max_tokens cap (observed
+    # exactly 4096 on 2026-08-18: <=4096 → 200, >=4097 → a misleading
+    # 429 "Workspace allocated quota exceeded"). The profile default of
+    # 8192 would hit that wall, so pin the live test below the cap.
+    monkeypatch.setenv("MCP_MAX_TOKENS", "4096")
     # Bump the timeout for the real network round-trip.
     monkeypatch.setenv("MCP_TIMEOUT_SECONDS", "120")
 

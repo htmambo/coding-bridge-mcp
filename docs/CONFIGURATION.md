@@ -190,6 +190,12 @@ MCP_* > SPARK_* > Provider 默认值
 上下文和消息裁剪发生在服务端内存会话中；模型 API 本身的真实上下文上限仍由厂商
 决定，代码中的字符数是发送前的保护阈值。
 
+> **sensenova 注意**：SenseNova workspace 对单请求 `max_tokens` 有上限
+> （2026-08-18 实测恰好为 `4096`：`≤4096` 正常返回，`≥4097` 返回误导性
+> `429 Workspace allocated quota exceeded`，即使控制台额度充足；该上限可能
+> 随时间或套餐变化，若遇此 429 请下调 `max_tokens`）。profile 默认值 `8192`
+> 可能撞墙，使用 sensenova 时建议显式设置 `MCP_MAX_TOKENS=4096`。
+
 ## 6. 代理配置
 
 `PROXY` 默认值是 `false`：强制直连，并忽略宿主 Shell 的标准代理变量。

@@ -254,6 +254,8 @@ MCP Server 作为 Claude Code 的子进程运行，需要从环境变量读取�
 ```
 
 > 默认模型 `glm-5.2`（1M 上下文，思考模式，旗舰级长任务/工程场景；已于 2026-08-18 通过 `GET /v1/models` 实测确认可用）。⚠️ **Token Plan 配额极低**（tpm 限流易触发，连续调用需间隔约 1 分钟）；若更看重吞吐而非审查深度，可设 `SENSENOVA_MODEL=sensenova-6.7-flash-lite`（256K 上下文，更快更省 token）。注意 `sensenova-u1-fast` 是图像生成接口，不能作对话模型。
+>
+> ⚠️ **单请求 `max_tokens` 上限**：workspace 对单次请求的 `max_tokens` 有上限（2026-08-18 实测恰好为 **4096**：`≤4096` 正常返回，`≥4097` 返回误导性 `429 Workspace allocated quota exceeded`，即使控制台显示额度充足）。该上限可能随时间或套餐变化，若遇此 429 请下调 `max_tokens`；使用本 provider 时建议显式设置 `MCP_MAX_TOKENS=4096`。
 
 ### DeepSeek 官方 API（OpenAI 兼容）
 
@@ -662,7 +664,7 @@ claude
 | `xfyun-coding` | `1048576` | `8192` | 可由 `MCP_MAX_CONTEXT_CHARS` 覆盖 |
 | `volcengine-coding` | `1048576` | `8192` | 可由 `MCP_MAX_CONTEXT_CHARS` 覆盖 |
 | `qianfan-coding` | `1048576` | `8192` | 默认模型 `glm-5.2` |
-| `sensenova` | `1048576` | `8192` | ⚠️ 配额极低；默认模型 `glm-5.2` |
+| `sensenova` | `1048576` | `8192` | ⚠️ 配额极低；默认模型 `glm-5.2`；workspace 单请求 `max_tokens` 上限 4096（2026-08-18 实测，超限返回误导性 429），建议设 `MCP_MAX_TOKENS=4096` |
 | `deepseek` | `1048576` | `8192` | 默认模型 `deepseek-v4-pro` |
 | `opencode-go` | `1048576` | `8192` | ⚠️ experimental；默认模型 `glm-5.2` |
 

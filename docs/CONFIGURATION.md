@@ -122,7 +122,7 @@ PROVIDER > SPARK_MODE（旧兼容变量） > xfyun-coding
 | `volcengine-coding` | `https://ark.cn-beijing.volces.com/api/coding/v3/chat/completions` | `ark-code-latest` |
 | `qianfan-coding` | `https://qianfan.baidubce.com/v2/tokenplan/personal/chat/completions` | `glm-5.2` |
 | `opencode-go` | `https://opencode.ai/zen/go/v1/chat/completions` | `glm-5.2` |
-| `sensenova` | `https://token.sensenova.cn/v1/chat/completions` | `deepseek-v4-flash` |
+| `sensenova` | `https://token.sensenova.cn/v1/chat/completions` | `glm-5.2` |
 | `deepseek` | `https://api.deepseek.com/chat/completions` | `deepseek-v4-pro` |
 
 `SPARK_MODE=coding` 仍可工作，但会产生弃用警告。`SPARK_MODE=http` 和

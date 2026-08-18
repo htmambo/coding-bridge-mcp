@@ -13,7 +13,7 @@ Coding Bridge MCP 通过统一的 OpenAI 兼容 HTTP 客户端接入多个厂商
 | **xfyun-coding**（默认） | OpenAI 兼容 | `SPARK_API_KEY`（HTTP Bearer） | `https://maas-coding-api.cn-huabei-1.xf-yun.com/v2/chat/completions` | `astron-code-latest` |
 | **volcengine-coding** | OpenAI 兼容 | `VOLCENGINE_API_KEY`（HTTP Bearer） | `https://ark.cn-beijing.volces.com/api/coding/v3/chat/completions` | `ark-code-latest` |
 | **qianfan-coding** | OpenAI 兼容 | `QIANFAN_API_KEY`（HTTP Bearer） | `https://qianfan.baidubce.com/v2/tokenplan/personal/chat/completions` | `glm-5.2` |
-| **sensenova** ⚠️ 配额极低 | OpenAI 兼容 | `SENSENOVA_API_KEY`（HTTP Bearer） | `https://token.sensenova.cn/v1/chat/completions` | `deepseek-v4-flash` |
+| **sensenova** ⚠️ 配额极低 | OpenAI 兼容 | `SENSENOVA_API_KEY`（HTTP Bearer） | `https://token.sensenova.cn/v1/chat/completions` | `glm-5.2` |
 | **deepseek** | OpenAI 兼容 | `DEEPSEEK_API_KEY`（HTTP Bearer） | `https://api.deepseek.com/chat/completions` | `deepseek-v4-pro` |
 | **opencode-go** ⚠️ experimental | OpenAI 兼容 | `OPENCODE_API_KEY`（HTTP Bearer） | `https://opencode.ai/zen/go/v1/chat/completions` | `glm-5.2` |
 
@@ -253,7 +253,7 @@ MCP Server 作为 Claude Code 的子进程运行，需要从环境变量读取�
 }
 ```
 
-> 默认模型 `deepseek-v4-flash`（1M 上下文，思考模式，审查质量较高）。⚠️ **Token Plan 配额极低**（tpm 限流易触发，连续调用需间隔约 1 分钟）；若更看重吞吐而非审查深度，可设 `SENSENOVA_MODEL=sensenova-6.7-flash-lite`（256K 上下文，更快更省 token）。注意 `sensenova-u1-fast` 是图像生成接口，不能作对话模型。
+> 默认模型 `glm-5.2`（1M 上下文，思考模式，旗舰级长任务/工程场景；已于 2026-08-18 通过 `GET /v1/models` 实测确认可用）。⚠️ **Token Plan 配额极低**（tpm 限流易触发，连续调用需间隔约 1 分钟）；若更看重吞吐而非审查深度，可设 `SENSENOVA_MODEL=sensenova-6.7-flash-lite`（256K 上下文，更快更省 token）。注意 `sensenova-u1-fast` 是图像生成接口，不能作对话模型。
 
 ### DeepSeek 官方 API（OpenAI 兼容）
 
@@ -593,7 +593,7 @@ claude
 | `QIANFAN_MODEL` | `glm-5.2` | 千帆默认模型覆盖 |
 | `SENSENOVA_API_KEY` | - | 商汤 SenseNova 专用 API Key；优先于 `API_KEY` |
 | `SENSENOVA_API_URL` | 见 Provider | 商汤 SenseNova 端点覆盖 |
-| `SENSENOVA_MODEL` | `deepseek-v4-flash` | 商汤默认模型覆盖（可选 `sensenova-6.7-flash-lite`，配额极低时换用以提吞吐） |
+| `SENSENOVA_MODEL` | `glm-5.2` | 商汤默认模型覆盖（可选 `sensenova-6.7-flash-lite`，配额极低时换用以提吞吐） |
 | `DEEPSEEK_API_KEY` | - | DeepSeek 官方专用 API Key；优先于 `API_KEY` |
 | `DEEPSEEK_API_URL` | 见 Provider | DeepSeek 端点覆盖 |
 | `DEEPSEEK_MODEL` | `deepseek-v4-pro` | DeepSeek 默认模型覆盖（可选 `deepseek-v4-flash`） |
@@ -662,7 +662,7 @@ claude
 | `xfyun-coding` | `1048576` | `8192` | 可由 `MCP_MAX_CONTEXT_CHARS` 覆盖 |
 | `volcengine-coding` | `1048576` | `8192` | 可由 `MCP_MAX_CONTEXT_CHARS` 覆盖 |
 | `qianfan-coding` | `1048576` | `8192` | 默认模型 `glm-5.2` |
-| `sensenova` | `1048576` | `8192` | ⚠️ 配额极低；默认模型 `deepseek-v4-flash` |
+| `sensenova` | `1048576` | `8192` | ⚠️ 配额极低；默认模型 `glm-5.2` |
 | `deepseek` | `1048576` | `8192` | 默认模型 `deepseek-v4-pro` |
 | `opencode-go` | `1048576` | `8192` | ⚠️ experimental；默认模型 `glm-5.2` |
 

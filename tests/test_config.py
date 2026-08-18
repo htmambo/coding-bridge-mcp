@@ -226,7 +226,7 @@ def test_sensenova_defaults():
     assert settings.provider == "sensenova"
     assert settings.mode == "http"
     assert settings.api_url == "https://token.sensenova.cn/v1/chat/completions"
-    assert settings.default_model == "deepseek-v4-flash"
+    assert settings.default_model == "glm-5.2"
     assert settings.max_context_chars == 1_048_576
     assert settings.max_tokens == 8192
     assert settings.api_password == "sn-key"

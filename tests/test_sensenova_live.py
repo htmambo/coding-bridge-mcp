@@ -18,38 +18,24 @@ environment (or a project ``.env`` that ``python-dotenv`` will load —
 **never** hardcoded in source; if no key is configured the test is
 skipped via ``pytest.skip``.
 
-Why this test posts with ``model=glm-5.2`` while the SENSENOVA profile's
-default is ``deepseek-v4-flash``: the user's intent is to verify the
-SenseNova Token Plan endpoint accepts an arbitrary chat-model name
-(``glm-5.2`` is registered against the opencode-go provider, not against
-sensenova — see ``providers.OPENCODE_GO.default_model``). We override
-the model via the ``SENSENOVA_MODEL`` env var so the live POST carries
-``{"model": "glm-5.2"}``. The HttpApiClient does not validate the model
-name client-side; it just passes the string through to the upstream.
-Whether sensenova actually serves that model is what this smoke test
-exercises.
+The request uses the SENSENOVA profile's default model ``glm-5.2``, which
+is confirmed to be served by the Token Plan (verified via
+``GET /v1/models`` on 2026-08-18, alongside ``deepseek-v4-flash`` and the
+``sensenova-*-flash-lite`` models). The HttpApiClient does not validate
+the model name client-side; it just passes the string through to the
+upstream.
 
-Two outcomes are accepted as legitimate:
-
-1. **200 success** — content + usage returned; content non-empty, mentions
-   "2", and ``usage.total_tokens > 0``. Proves the Bearer assumption and
-   the OpenAI response shape hold against the real upstream with this
-   model override.
-2. **4xx model-not-supported** — sensenova may reject ``glm-5.2`` as an
-   unknown model name. This is **not** a project bug: the request was
-   authenticated and routed far enough for the upstream to apply its own
-   model catalog. It surfaces through the project's normal ``ApiError``
-   path and is accepted here.
-
-Any other outcome (401/403, network error, unexpected 5xx) is a real
-failure and fails the test.
+The only accepted outcome is **200 success** — content + usage returned;
+content non-empty, mentions "2", and ``usage.total_tokens > 0``. Proves
+the Bearer assumption and the OpenAI response shape hold against the real
+upstream with the profile default model. Any ``ApiError`` (401/403/4xx/
+5xx) or network error is a real failure and fails the test.
 """
 
 from __future__ import annotations
 
 import json
 import os
-import re
 from importlib import reload
 
 import pytest
@@ -60,17 +46,6 @@ from coding_bridge_mcp import config as config_module
 
 
 pytestmark = pytest.mark.sensenova_live
-
-
-# Matches upstream model-not-supported / unknown-model error messages. The
-# exact wording varies across providers; this keeps the regex liberal enough
-# to catch common phrasings while staying specific to "this model name is
-# not in the catalog" (vs. e.g. a generic 401).
-_MODEL_NOT_SUPPORTED_RE = re.compile(
-    r"(model\s*(not\s*found|not\s*supported|does\s*not\s*exist|unknown)|"
-    r"invalid\s*model|unsupported\s*model)",
-    re.IGNORECASE,
-)
 
 
 def _load_sensenova_key() -> str:
@@ -122,10 +97,11 @@ def _maybe_verbose(verbose: bool, payload: dict) -> None:
 
 
 def _build_sensenova_settings(monkeypatch):
-    """Reload config + api_client modules with PROVIDER=sensenova and glm-5.2.
+    """Reload config + api_client modules with PROVIDER=sensenova.
 
     The key is resolved before any ``monkeypatch.delenv`` so the merged
-    environment follows the Provider-specific-first priority.
+    environment follows the Provider-specific-first priority. No model
+    override is set: the test exercises the profile default (``glm-5.2``).
     """
     key = _load_sensenova_key()  # resolves from live env first; may pytest.skip
     for env_key in [
@@ -140,11 +116,7 @@ def _build_sensenova_settings(monkeypatch):
         monkeypatch.delenv(env_key, raising=False)
     monkeypatch.setenv("PROVIDER", "sensenova")
     monkeypatch.setenv("SENSENOVA_API_KEY", key)
-    # glm-5.2 is the model name we want the upstream to see; it is NOT the
-    # sensenova default (deepseek-v4-flash). Override via SENSENOVA_MODEL.
-    monkeypatch.setenv("SENSENOVA_MODEL", "glm-5.2")
-    # Bump the timeout for the real network round-trip; sensenova can take a
-    # while on the first call to an unfamiliar model name.
+    # Bump the timeout for the real network round-trip.
     monkeypatch.setenv("MCP_TIMEOUT_SECONDS", "120")
 
     reload(config_module)
@@ -156,14 +128,13 @@ def _build_sensenova_settings(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_sensenova_glm52_end_to_end_smoke(monkeypatch, request):
-    """Settings → validate → HttpApiClient → real SenseNova POST → legal outcome.
+    """Settings → validate → HttpApiClient → real SenseNova POST → 200 success.
 
     Drives the live HTTP layer against the documented Token Plan endpoint
-    (``https://token.sensenova.cn/v1/chat/completions``) with ``model=glm-5.2``
-    injected via ``SENSENOVA_MODEL``. The HttpApiClient does not validate the
-    model name, so the request goes out as-is; the only legal outcomes are
-    "200 success" or a 4xx that explicitly says the model is unsupported.
-    Anything else is a real bug.
+    (``https://token.sensenova.cn/v1/chat/completions``) with the profile
+    default model ``glm-5.2``. Since that model is confirmed to be served by
+    the upstream, the only legal outcome is a 200 success; any error is a
+    real bug.
 
     Verbose request/response trace is printed to stderr when pytest is run
     with ``-v`` (or higher) or with ``-s``.
@@ -175,10 +146,9 @@ async def test_sensenova_glm52_end_to_end_smoke(monkeypatch, request):
     assert settings.provider == "sensenova"
     assert settings.mode == "http"
     assert settings.api_url == "https://token.sensenova.cn/v1/chat/completions"
-    # SENSENOVA_MODEL must win over the profile default (deepseek-v4-flash).
     assert settings.default_model == "glm-5.2", (
-        "SENSENOVA_MODEL override did not propagate to settings.default_model; "
-        f"got {settings.default_model!r}"
+        "SENSENOVA profile default model drifted; "
+        f"expected 'glm-5.2', got {settings.default_model!r}"
     )
     assert settings.api_password, "API key resolved empty despite _load_sensenova_key guard"
 
@@ -207,25 +177,12 @@ async def test_sensenova_glm52_end_to_end_smoke(monkeypatch, request):
         },
     )
 
-    # --- Real network call; branch on success OR upstream model-not-supported ---
-    ApiError = api_client_module.ApiError
-    try:
-        content, usage = await client.call(
-            messages=messages,
-            model=settings.default_model,
-            temperature=1.0,
-        )
-    except ApiError as exc:
-        # The only accepted failure is the upstream rejecting the model name
-        # we injected (glm-5.2 is opencode-go's default, not sensenova's).
-        # 401/403/network/5xx are all real bugs.
-        error = str(exc)
-        _maybe_verbose(verbose, {"stage": "error", "error": error})
-        assert "400" in error or "404" in error or _MODEL_NOT_SUPPORTED_RE.search(error), (
-            "expected either success or a 4xx 'model not supported' wall; "
-            f"got unexpected error: {error!r}"
-        )
-        return
+    # --- Real network call; the only legal outcome is success ---
+    content, usage = await client.call(
+        messages=messages,
+        model=settings.default_model,
+        temperature=1.0,
+    )
 
     _maybe_verbose(
         verbose,

@@ -65,7 +65,7 @@ def test_sensenova_provider_profile_loaded() -> None:
     profile = providers.get_provider("sensenova")
     assert profile.mode == "http"
     assert profile.default_api_url == "https://token.sensenova.cn/v1/chat/completions"
-    assert profile.default_model == "deepseek-v4-flash"
+    assert profile.default_model == "glm-5.2"
     assert profile.api_key_env_vars == ["SENSENOVA_API_KEY", "API_KEY"]
     assert profile.api_url_env_vars == ["SENSENOVA_API_URL"]
     assert profile.model_env_vars == ["SENSENOVA_MODEL"]
@@ -80,7 +80,7 @@ def test_sensenova_settings_resolve() -> None:
 
     assert settings.provider == "sensenova"
     assert settings.api_url == "https://token.sensenova.cn/v1/chat/completions"
-    assert settings.default_model == "deepseek-v4-flash"
+    assert settings.default_model == "glm-5.2"
     assert settings.api_password == "sensenova-test-key"
 
 

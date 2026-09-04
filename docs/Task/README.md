@@ -5,6 +5,9 @@
 
 ## Completed Tasks (Archive)
 
+### 2026-09
+- ✅ [Add qianfan_live end-to-end smoke test](Archive/2026-09/QIANFAN_LIVE_TEST_PLAN.md) - Completed 2026-09-05
+
 ### 2026-07
 - ✅ [Fix Project Health (archive stale task + add ruff to deps/CI)](Archive/2026-07/FIX_PROJECT_HEALTH_PLAN.md) - Completed 2026-07-02
 - ✅ [Add DeepSeek Provider (deepseek)](Archive/2026-07/DEEPSEEK_PROVIDER_PLAN.md) - Completed 2026-07-01

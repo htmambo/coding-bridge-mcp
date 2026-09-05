@@ -49,13 +49,21 @@ VOLCENGINE_CODING = ProviderProfile(
 
 # Baidu Qianfan Token Plan profile (OpenAI-compatible).
 # Endpoint: /v2/tokenplan/personal/chat/completions.
+#
+# Recommended review models (both 1M-token context / 128K-token output):
+#   - ``glm-5.2``        — thinking-mode, deeper reasoning (default)
+#   - ``glm-5.3-flash``  — faster, lighter (switch via QIANFAN_MODEL)
+# The ``default_max_tokens`` of 65 536 leaves headroom for the thinking
+# chain plus the final review verdict. Raise via ``MCP_MAX_TOKENS`` up to
+# the model's 128 K ceiling, or lower it to stay inside a per-request
+# quota when the Token Plan tier caps output below 64 K.
 QIANFAN_CODING = ProviderProfile(
     name="qianfan-coding",
     mode="http",
     default_api_url="https://qianfan.baidubce.com/v2/tokenplan/personal/chat/completions",
     default_model="glm-5.2",
     default_max_context_chars=1_048_576,
-    default_max_tokens=8_192,
+    default_max_tokens=65_536,
     api_key_env_vars=["QIANFAN_API_KEY", "API_KEY"],
     api_url_env_vars=["QIANFAN_API_URL"],
     model_env_vars=["QIANFAN_MODEL"],

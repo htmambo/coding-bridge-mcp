@@ -152,7 +152,7 @@ def test_qianfan_defaults():
     assert settings.api_url == "https://qianfan.baidubce.com/v2/tokenplan/personal/chat/completions"
     assert settings.default_model == "glm-5.2"
     assert settings.max_context_chars == 1_048_576
-    assert settings.max_tokens == 8192
+    assert settings.max_tokens == 65_536
     assert settings.api_password == "qianfan-key"
 
 

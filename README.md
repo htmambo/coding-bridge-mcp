@@ -663,7 +663,7 @@ claude
 |---|---|---|---|
 | `xfyun-coding` | `1048576` | `8192` | 可由 `MCP_MAX_CONTEXT_CHARS` 覆盖 |
 | `volcengine-coding` | `1048576` | `8192` | 可由 `MCP_MAX_CONTEXT_CHARS` 覆盖 |
-| `qianfan-coding` | `1048576` | `8192` | 默认模型 `glm-5.2` |
+| `qianfan-coding` | `1048576` | `65536` | 默认模型 `glm-5.2`（推荐 `glm-5.2` / `glm-5.3-flash` 共 1M 上下文 / 128K 输出；`MCP_MAX_TOKENS` 可覆盖至模型上限） |
 | `sensenova` | `1048576` | `8192` | ⚠️ 配额极低；默认模型 `glm-5.2`；workspace 单请求 `max_tokens` 上限 4096（2026-08-18 实测，超限返回误导性 429），建议设 `MCP_MAX_TOKENS=4096` |
 | `deepseek` | `1048576` | `8192` | 默认模型 `deepseek-v4-pro` |
 | `opencode-go` | `1048576` | `8192` | ⚠️ experimental；默认模型 `glm-5.2` |

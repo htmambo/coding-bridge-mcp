@@ -25,7 +25,7 @@
         "QIANFAN_API_KEY": "<qianfan-api-key>",
         "MCP_TIMEOUT_SECONDS": "300",
         "MCP_MAX_MESSAGES": "40",
-        "MCP_MAX_TOKENS": "8192",
+        "MCP_MAX_TOKENS": "65536",
         "PROXY": "false",
         "LOG_LEVEL": "INFO"
       },

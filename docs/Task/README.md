@@ -6,6 +6,7 @@
 ## Completed Tasks (Archive)
 
 ### 2026-09
+- ✅ [sensenova 接口容错硬化 + 演示脚本沉淀](Archive/2026-09/SENSENOVA_HARDENING_PLAN.md) - Completed 2026-09-16
 - ✅ [Add qianfan_live end-to-end smoke test](Archive/2026-09/QIANFAN_LIVE_TEST_PLAN.md) - Completed 2026-09-05
 
 ### 2026-07

@@ -961,11 +961,19 @@ uv sync
 # 运行测试
 uv run pytest
 
+# 手动 smoke：跑 mock demo（无 API 调用，CI 安全）
+uv run python tests/review_smoke.py
+
+# 手动 smoke：跑真上游（需 .env 中有 PROVIDER + 凭证；显式启用消耗配额）
+REVIEW_DEMO_LIVE=1 uv run python tests/review_smoke.py
+
 # 直接以 stdio 方式启动服务器（便于手动调试）
 uv run coding-bridge-mcp
 ```
 
 测试覆盖：`tests/test_config.py`（Provider 解析 / 凭证回退 / 配置校验）、`tests/test_session.py`（消息历史裁剪）。所有工具的真实调用都通过 mock，不会产生 API 费用。
+
+`tests/review_smoke.py` 是手动 smoke（文件名不以 `test_` 开头，pytest 默认不收集），覆盖 review_code 的成功路径 + 多轮累计 + 错误识别 override 短路三个场景。
 
 修改代码后建议先跑一遍 `pytest` 再提交。
 

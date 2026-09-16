@@ -89,16 +89,39 @@ class ApiError(Exception):
 # Keywords in error responses that indicate a retryable rate-limit / throttling
 # condition, even when the HTTP status code is not 429 (e.g. qianfan returns 200
 # with a provider-level error on burst protection).
-_RETRYABLE_ERROR_KEYWORDS = (
+#
+# Note: this list is intentionally narrower than "quota exceeded" alone —
+# providers (notably sensenova) return 4xx messages like "Workspace allocated
+# quota exceeded" for HARD configuration limits (max_tokens wall, etc.) that
+# the client must NOT retry. The override list below takes precedence and is
+# the single source of truth for "hard error, do not retry". See
+# ``_NON_RETRYABLE_OVERRIDE_KEYWORDS`` and ``_first_override_keyword``.
+_RETRYABLE_RATE_LIMIT_HINTS = (
     "request burst",
     "rate limit",
     "rate-limit",
     "too many requests",
-    "quota exceeded",
     "system protection",
     "系统保护",
     "限流",
     "throttl",
+)
+
+# Defensive override: body keywords that indicate a non-transient
+# configuration / billing / hard-limit error. When present, the response must
+# NOT be treated as a retryable rate-limit regardless of HTTP status.
+# Tested explicitly in ``tests/test_api_client_retry.py``.
+_NON_RETRYABLE_OVERRIDE_KEYWORDS = (
+    "workspace allocated quota",
+    "workspace quota",
+    "insufficient balance",
+    "insufficient credits",
+    "余额不足",
+    "欠费",
+    "payment required",
+    "subscription expired",
+    "billing limit",
+    "plan limit",
 )
 
 
@@ -111,18 +134,16 @@ def _is_retryable_status(status_code: int) -> bool:
     return False
 
 
-def _body_hints_rate_limit(body: Any) -> bool:
-    """Heuristic: does the response body mention a rate-limit / throttling condition?
+def _flatten_body_text(body: Any) -> str:
+    """Return a lowercased flattened string of all string values in ``body``.
 
-    We flatten the whole body to a string and scan for keywords — this is
-    robust against varying field names across providers (``message``,
-    ``error_msg``, ``msg``, ``error.message``, etc.) without needing an
-    exhaustive schema list.
+    Walks dicts and lists up to depth 3 so nested error objects like
+    ``{"error": {"message": "..."}}`` are covered. The single string input
+    case is the fast path. Any other shape falls back to ``repr()``.
     """
     if isinstance(body, str):
-        text = body.lower()
-    elif isinstance(body, dict):
-        # Walk a few levels deep so nested error objects are covered.
+        return body.lower()
+    if isinstance(body, dict):
         parts: list[str] = []
 
         def _walk(obj: Any, depth: int = 0) -> None:
@@ -138,10 +159,40 @@ def _body_hints_rate_limit(body: Any) -> bool:
                     _walk(v, depth + 1)
 
         _walk(body)
-        text = " ".join(parts).lower()
-    else:
-        text = str(body).lower()
-    return any(kw in text for kw in _RETRYABLE_ERROR_KEYWORDS)
+        return " ".join(parts).lower()
+    return str(body).lower()
+
+
+def _first_override_keyword(body: Any) -> str | None:
+    """Return the first ``_NON_RETRYABLE_OVERRIDE_KEYWORDS`` that matches ``body``,
+    or ``None`` if none match. Used for diagnostic logging when the override
+    short-circuits the retry decision in ``_request_once``.
+    """
+    text = _flatten_body_text(body)
+    for kw in _NON_RETRYABLE_OVERRIDE_KEYWORDS:
+        if kw in text:
+            return kw
+    return None
+
+
+def _body_hints_rate_limit(body: Any) -> bool:
+    """Heuristic: does the response body mention a transient rate-limit / throttling
+    condition that warrants retry?
+
+    Two-step logic:
+      1. If any ``_NON_RETRYABLE_OVERRIDE_KEYWORDS`` matches, return ``False``
+         — hard configuration / billing errors must never look like rate limits.
+      2. Otherwise, scan for ``_RETRYABLE_RATE_LIMIT_HINTS``.
+
+    Robust against varying field names across providers (``message``,
+    ``error_msg``, ``msg``, ``error.message``, etc.) without needing an
+    exhaustive schema list. Case-insensitive substring match tolerates
+    variations like ``"Workspace Allocated Quota"`` or ``"workspace  allocated  quota"``.
+    """
+    text = _flatten_body_text(body)
+    if any(kw in text for kw in _NON_RETRYABLE_OVERRIDE_KEYWORDS):
+        return False
+    return any(kw in text for kw in _RETRYABLE_RATE_LIMIT_HINTS)
 
 
 def _extract_retry_after(headers: Dict[str, Any]) -> float | None:
@@ -439,8 +490,22 @@ class HttpApiClient(ApiClient):
                 status_code=response.status_code,
                 detail=detail,
             )
-            # Retryable on 429 / 5xx, or when the body hints at rate limiting.
-            retryable = _is_retryable_status(response.status_code) or _body_hints_rate_limit(data)
+            # Step 1: hard configuration / billing errors must NEVER retry,
+            # even when status is 429 / 5xx (e.g. sensenova's "Workspace
+            # allocated quota exceeded" returns 429 but is a max_tokens wall).
+            override_match = _first_override_keyword(data)
+            if override_match is not None:
+                logger.warning(
+                    "non_retryable_override",
+                    url=safe_url,
+                    model=model,
+                    status_code=response.status_code,
+                    matched_keyword=override_match,
+                )
+                retryable = False
+            else:
+                # Retryable on 429 / 5xx, or when the body hints at rate limiting.
+                retryable = _is_retryable_status(response.status_code) or _body_hints_rate_limit(data)
             raise ApiError(
                 f"API HTTP {response.status_code}: "
                 f"{_bounded_text(detail or response.text or 'unknown error')}",
@@ -458,12 +523,27 @@ class HttpApiClient(ApiClient):
                 code=code,
                 error_message=data.get("message"),
             )
-            # Provider-level errors are retryable when the message hints at
-            # rate limiting / burst protection (e.g. qianfan's "System protection
-            # triggered by request burst").
+            # Step 1: override takes precedence — hard configuration / billing
+            # errors must not be retried even when the provider wraps them in
+            # a code field.
+            override_match = _first_override_keyword(data)
+            if override_match is not None:
+                logger.warning(
+                    "non_retryable_override",
+                    url=safe_url,
+                    model=model,
+                    code=code,
+                    matched_keyword=override_match,
+                )
+                retryable = False
+            else:
+                # Provider-level errors are retryable when the message hints at
+                # rate limiting / burst protection (e.g. qianfan's "System protection
+                # triggered by request burst").
+                retryable = _body_hints_rate_limit(data)
             raise ApiError(
                 f"API error {code}: {data.get('message')} (sid={data.get('sid')})",
-                retryable=_body_hints_rate_limit(data),
+                retryable=retryable,
             )
 
         try:

@@ -14,6 +14,8 @@ from coding_bridge_mcp.api_client import (
     _body_hints_rate_limit,
     _compute_backoff_delay,
     _extract_retry_after,
+    _first_override_keyword,
+    _flatten_body_text,
     _is_retryable_status,
 )
 from coding_bridge_mcp.config import Settings
@@ -351,3 +353,147 @@ class TestZeroRetries:
                 asyncio.run(_run_with_client(HttpApiClient(_settings(max_retries=0))))
 
         assert tracker.call_count == 1
+
+
+# ---------------------------------------------------------------------------
+# Override keywords (sensenova max_tokens wall, billing errors, etc.)
+# These hard configuration / billing errors must never trigger automatic retry,
+# even when the HTTP status code is 429 or 5xx.
+# ---------------------------------------------------------------------------
+
+
+class TestNonRetryableOverrides:
+    """Body-level unit tests for the hard-error override keywords."""
+
+    def test_workspace_quota_exceeded_override(self):
+        """The exact sensenova 429 message must short-circuit rate-limit hint."""
+        assert _body_hints_rate_limit({
+            "error": {"message": "Workspace allocated quota exceeded"}
+        }) is False
+
+    def test_insufficient_balance_override(self):
+        assert _body_hints_rate_limit({"message": "Insufficient balance"}) is False
+
+    def test_subscription_expired_override(self):
+        assert _body_hints_rate_limit({"message": "subscription expired"}) is False
+
+    def test_chinese_balance_keywords(self):
+        assert _body_hints_rate_limit({"msg": "账户余额不足"}) is False
+        assert _body_hints_rate_limit({"msg": "账户已欠费"}) is False
+        assert _body_hints_rate_limit({"msg": "billing limit reached"}) is False
+
+    def test_first_override_keyword_returns_match(self):
+        kw = _first_override_keyword({
+            "error": {"message": "Workspace allocated quota exceeded"}
+        })
+        assert kw == "workspace allocated quota"
+
+    def test_first_override_keyword_returns_none_when_no_match(self):
+        assert _first_override_keyword({"message": "rate limit exceeded"}) is None
+
+    def test_uppercase_and_spacing_tolerated(self):
+        """Override list is matched as lowercase substrings; spacing and
+        case in the body must not break detection."""
+        assert _body_hints_rate_limit({
+            "message": "WORKSPACE  ALLOCATED  Quota  Exceeded"
+        }) is False
+
+    def test_deeply_nested_override(self):
+        """Body is flattened depth 3; override must still match nested keys."""
+        assert _body_hints_rate_limit({
+            "error": {"inner": {"message": "Workspace allocated quota exceeded"}}
+        }) is False
+
+    def test_bare_quota_exceeded_no_longer_retryable(self):
+        """Regression guard: 'quota exceeded' alone is no longer in the retryable
+        list. A provider whose ONLY rate-limit signal is this bare phrase would
+        lose retry; documented in SENSENOVA_HARDENING_PLAN.
+        """
+        assert _body_hints_rate_limit({"message": "quota exceeded"}) is False
+
+    def test_unrelated_text_normal_rate_limit_logic(self):
+        """The override list must not poison the legitimate rate-limit path."""
+        assert _body_hints_rate_limit({"message": "rate limit exceeded"}) is True
+        assert _body_hints_rate_limit({"message": "request burst triggered"}) is True
+        assert _body_hints_rate_limit({"msg": "接口限流，请稍后重试"}) is True
+
+    def test_flatten_body_text_lowercases_strings(self):
+        """Sanity: _flatten_body_text lowercases string values."""
+        assert "workspace allocated quota" in _flatten_body_text({
+            "message": "Workspace ALLOCATED Quota"
+        })
+
+
+class TestNoRetryOnOverride:
+    """Integration tests: HttpApiClient must not retry when body matches an
+    override keyword, regardless of HTTP status (429 or 5xx)."""
+
+    def test_workspace_quota_429_not_retried(self):
+        """The sensenova max_tokens wall scenario: 429 + override must NOT retry."""
+        responses = [_make_response(429, {
+            "error": {"message": "Workspace allocated quota exceeded"}
+        })]
+        tracker = _RetryTracker(responses)
+        with patch("httpx.AsyncClient") as mock_cls:
+            fake = MagicMock()
+            fake.__aenter__ = AsyncMock(return_value=fake)
+            fake.__aexit__ = AsyncMock(return_value=None)
+            fake.post = tracker
+            mock_cls.return_value = fake
+
+            with pytest.raises(ApiError, match="quota"):
+                asyncio.run(_run_with_client(HttpApiClient(_settings(max_retries=3))))
+        assert tracker.call_count == 1  # NO retry, despite 429
+
+    def test_workspace_quota_5xx_not_retried(self):
+        """Edge: 5xx + override must also short-circuit retry."""
+        responses = [_make_response(503, {
+            "error": {"message": "Workspace allocated quota exceeded"}
+        })]
+        tracker = _RetryTracker(responses)
+        with patch("httpx.AsyncClient") as mock_cls:
+            fake = MagicMock()
+            fake.__aenter__ = AsyncMock(return_value=fake)
+            fake.__aexit__ = AsyncMock(return_value=None)
+            fake.post = tracker
+            mock_cls.return_value = fake
+
+            with pytest.raises(ApiError):
+                asyncio.run(_run_with_client(HttpApiClient(_settings(max_retries=3))))
+        assert tracker.call_count == 1
+
+    def test_provider_level_error_with_override_not_retried(self):
+        """Override applies even on status=200 + code!=0 (qianfan-style)."""
+        responses = [_make_response(200, {
+            "code": 17,
+            "error_msg": "Workspace allocated quota exceeded",
+        })]
+        tracker = _RetryTracker(responses)
+        with patch("httpx.AsyncClient") as mock_cls:
+            fake = MagicMock()
+            fake.__aenter__ = AsyncMock(return_value=fake)
+            fake.__aexit__ = AsyncMock(return_value=None)
+            fake.post = tracker
+            mock_cls.return_value = fake
+
+            with pytest.raises(ApiError):
+                asyncio.run(_run_with_client(HttpApiClient(_settings(max_retries=3))))
+        assert tracker.call_count == 1
+
+    def test_real_rate_limit_still_retried(self):
+        """Regression guard: legitimate rate-limit keywords still trigger retry."""
+        responses = [
+            _make_response(429, {"error": {"message": "rate limit exceeded"}}),
+            _make_response(200, {"choices": [{"message": {"content": "ok"}}]}),
+        ]
+        tracker = _RetryTracker(responses)
+        with patch("httpx.AsyncClient") as mock_cls:
+            fake = MagicMock()
+            fake.__aenter__ = AsyncMock(return_value=fake)
+            fake.__aexit__ = AsyncMock(return_value=None)
+            fake.post = tracker
+            mock_cls.return_value = fake
+
+            content, _ = asyncio.run(_run_with_client(HttpApiClient(_settings())))
+        assert content == "ok"
+        assert tracker.call_count == 2

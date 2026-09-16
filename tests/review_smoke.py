@@ -2,7 +2,11 @@
 
 Default mode is MOCK (FakeClient, no upstream calls). Set
 ``REVIEW_DEMO_LIVE=1`` to hit the real upstream via the credentials in
-``.env`` (sensenova profile by default; switch via ``PROVIDER``).
+``.env``. The script supports any of the 6 documented providers via
+``PROVIDER`` env var; when unset, falls back to ``sensenova``. Rounds
+1/2 use the real ``HttpApiClient`` for the active provider; Round 3
+exercises the override short-circuit and reflects the active provider's
+``api_url`` / ``max_tokens`` so the verification is provider-accurate.
 
 Rounds:
   R1 — review_code happy path; prints the upstream call shape and the
@@ -14,8 +18,10 @@ Rounds:
 
 Run from the project root::
 
-    uv run python tests/review_smoke.py                     # mock
-    REVIEW_DEMO_LIVE=1 uv run python tests/review_smoke.py  # real upstream
+    uv run python tests/review_smoke.py                          # mock (sensenova default)
+    PROVIDER=volcengine-coding uv run python tests/review_smoke.py     # mock (other provider)
+    REVIEW_DEMO_LIVE=1 uv run python tests/review_smoke.py       # real upstream
+    PROVIDER=qianfan-coding REVIEW_DEMO_LIVE=1 uv run python tests/review_smoke.py
 
 The filename intentionally does not start with ``test_`` so pytest does
 not collect it; running the default test suite never reaches here.
@@ -138,17 +144,23 @@ def _reset_server_state():
 
 
 def _smoke_settings():
-    """Minimal sensenova-shaped Settings for HttpApiClient in Round 3."""
+    """Derive Round-3 Settings from ``server._settings`` so the override
+    verification reflects the active provider (``api_url`` / ``default_model``
+    / ``max_tokens``). MOCK mode: ``api_password`` is irrelevant since Round 3
+    never POSTs real traffic — the override path is exercised by the canned
+    429 + 'workspace allocated quota' body returned by the mock.
+    """
+    base = server._settings
     return Settings(
-        provider="sensenova",
-        mode="http",
-        api_url="https://token.sensenova.cn/v1/chat/completions",
-        api_password="demo-only-not-a-real-key",
-        default_model="glm-5.2",
+        provider=base.provider,
+        mode=base.mode,
+        api_url=base.api_url,
+        api_password=base.api_password,
+        default_model=base.default_model,
         timeout_seconds=30.0,
         max_context_chars=200_000,
         max_messages=40,
-        max_tokens=4096,
+        max_tokens=base.max_tokens,
         proxy_mode="false",
         proxy_http=None,
         proxy_https=None,

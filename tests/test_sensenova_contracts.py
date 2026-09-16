@@ -119,7 +119,7 @@ def _sensenova_settings() -> Settings:
         timeout_seconds=30.0,
         max_context_chars=96_000,
         max_messages=40,
-        max_tokens=8_192,
+        max_tokens=4_096,
         proxy_mode="false",
         proxy_http=None,
         proxy_https=None,
@@ -198,7 +198,7 @@ def test_sensenova_request_payload_shape() -> None:
     assert payload["model"] == "sensenova-6.7-flash-lite"
     assert payload["messages"] == [{"role": "user", "content": "ping"}]
     assert payload["stream"] is False
-    assert payload["max_tokens"] == 8_192
+    assert payload["max_tokens"] == 4_096
 
 
 def test_sensenova_200_response_returns_content_and_usage() -> None:

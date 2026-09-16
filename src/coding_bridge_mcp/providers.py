@@ -95,13 +95,20 @@ OPENCODE_GO = ProviderProfile(
 # ``glm-5.2`` (1M context, reasoning) is the default. The trade-off: the
 # Token Plan quota is very low (tpm wall hit easily), so prefer a flash-lite
 # model via SENSENOVA_MODEL when throughput matters more than depth.
+#
+# ``default_max_tokens`` is pinned to 4096 because the workspace enforces a
+# per-request ``max_tokens`` cap of exactly 4096 (observed 2026-08-18). Any
+# value above 4096 returns a misleading 429 "Workspace allocated quota
+# exceeded" that the client treats as retryable, so a higher default would
+# silently burn 4 attempts (1 + 3 retries) per call. Users can still raise
+# the cap via MCP_MAX_TOKENS, but doing so will hit the workspace wall.
 SENSENOVA = ProviderProfile(
     name="sensenova",
     mode="http",
     default_api_url="https://token.sensenova.cn/v1/chat/completions",
     default_model="glm-5.2",
     default_max_context_chars=1_048_576,
-    default_max_tokens=8_192,
+    default_max_tokens=4_096,
     api_key_env_vars=["SENSENOVA_API_KEY", "API_KEY"],
     api_url_env_vars=["SENSENOVA_API_URL"],
     model_env_vars=["SENSENOVA_MODEL"],
